@@ -1,8 +1,6 @@
 # Mi Granja Events and Leisure Inc.
 
-Static copy of [migranjaevents.com](https://www.migranjaevents.com) for a GitHub Pages preview. This is a development preview: every page sends `noindex, nofollow`, and `robots.txt` disallows the whole site.
-
-Published URL (after merge to `main`): https://monsibits.github.io/site-migranja-events/
+Static website for [www.migranjaevents.com](https://www.migranjaevents.com/), served from GitHub Pages with a custom domain. The DNS and domain are managed in Cloudflare.
 
 ## Folder structure
 
@@ -12,48 +10,59 @@ home/index.html                     Redirects /home to /
 about/index.html                    About Us
 contact/index.html                  Contact form
 portfolio-1/index.html              Venues (nav label; path kept)
-expo-inquiry-post-submit/index.html Thank-you page
+blog/index.html                     Blog listing
+blog/<slug>/index.html              One article per folder
+expo-inquiry-post-submit/index.html Thank-you page after the contact form
 404.html                            Unknown URLs
-robots.txt                          Disallow: /
+CNAME                               www.migranjaevents.com
+robots.txt
 sitemap.xml
 .nojekyll                           Serve files as-is (no Jekyll)
-assets/css/styles.css
+assets/css/styles.css               Colours, type, layout
+assets/fonts/                       Self-hosted heading and body fonts (SIL OFL)
 assets/js/main.js                   Menu and photo carousel
 assets/img/                         Logo, favicon, photos (WebP)
-assets/video/                       Venue films (re-encoded from Squarespace HLS)
+assets/video/                       Venue films
 ```
 
-Internal links and assets use the `/site-migranja-events/` prefix so they resolve on GitHub Pages project sites. There is no `CNAME` file.
+Internal links and assets use root paths (`/about/`, `/assets/...`) so they resolve on the custom domain.
 
 ## How to edit text
 
-Page copy lives in the HTML file for that page. Change the words in the `<main>` element and keep the heading text the same unless the live site changes. Shared chrome (logo, nav, footer, email, address) is repeated at the top and bottom of each page, so update every page if those change.
+Page copy lives in the HTML file for that page. Change the words in the `<main>` element. Shared chrome (logo, nav, footer, email, address) is repeated at the top and bottom of each page, so update every page if those change.
 
 - Email: `sales@migranjaevents.com`
 - Address: Balagbag, Mahabang Kahoy Lejos, Indang, Cavite, Region 4-A (CALABARZON), 4122
-- Nav: Home, Venues (`/portfolio-1/`), About Us, Contact Us, Inquire (also `/contact/`)
+- Nav: Home, Venues (`/portfolio-1/`), About Us, Blog (`/blog/`), Contact Us, Inquire (also `/contact/`)
 
-Colours and type are in `assets/css/styles.css` (`--accent`, `--font-display`, `--font-body`).
+Colours and type are in `assets/css/styles.css` (`--accent`, `--gold`, `--paper`, `--font-display`, `--font-body`). Font files and their licenses are in `assets/fonts/`.
+
+## How to add a blog article
+
+1. Copy an existing article folder, for example `blog/wedding-planning-checklist/`, to a new kebab-case slug: `blog/your-new-slug/`.
+2. Edit `blog/your-new-slug/index.html`: title, description, canonical and Open Graph URLs, the visible heading and body, the date, and the Article JSON-LD (`headline`, `description`, `datePublished`, `dateModified`, `mainEntityOfPage`, `image`).
+3. Add a card to the list in `blog/index.html`.
+4. Add a `<url>` entry in `sitemap.xml`.
+
+Keep the header and footer the same as the other pages. Do not invent prices, guest counts, reviews, or package details.
 
 ## How to publish
 
-GitHub Pages is already set to deploy from the `main` branch root (legacy Pages, not a workflow). Merge this branch into `main`. The site is then served at https://monsibits.github.io/site-migranja-events/. Do not add a `CNAME` or change DNS from this repository.
+GitHub Pages deploys from the `main` branch root. After a change is reviewed, merge it into `main`. The live site is https://www.migranjaevents.com/. Keep the `CNAME` file.
 
-To preview locally, serve the repository so that path exists:
+To preview locally, serve the repository root:
 
 ```bash
-cd /path/to/parent
-ln -s /path/to/this/repo site-migranja-events
 python3 -m http.server 8080
 ```
 
-Open http://127.0.0.1:8080/site-migranja-events/
+Open http://127.0.0.1:8080/
 
-## TODO
+## Notes
 
-- The Squarespace theme names the body font `miller-display`, but the public site has an empty Typekit id, so that font file is not available. Body text uses a Georgia serif stack. Headings use Helvetica Neue / Arial, as on the live site.
-- Olive `#7f8164` is shifted to `#72745a` so white text on olive, and olive text on white, meet WCAG AA.
-- The live site uses three YouTube films as section backgrounds: `https://youtu.be/PrC6FE3ekL4` (home hero), `https://youtu.be/ukEPzZM41xw` (testimonial), and `https://youtu.be/wKI9Yr7GWUU` (About). Those pages link to the films. Full-bleed embeds are not used, because YouTube’s player draws a sign-in wall over the photo when autoplay is blocked. The live sections also set playback speed to 0.5, which a standard embed cannot set. The photos Squarespace uses as the video fallback are the visible backgrounds.
-- The two Venues page films were downloaded from Squarespace HLS (AES-128) and saved as `assets/video/venue-film-1.mp4` (about 69 seconds) and `venue-film-2.mp4` (about 107 seconds), scaled to 1280px wide. Originals were 1914×1080 and 1920×1080.
-- “Submit Another Inquiry” still points at `/expo-inquiry`, which is a 404 on the live site and here. The custom `404.html` answers it.
-- The contact form on the live site splits Name into First Name and Last Name. This form uses one required Name field, plus Email, Subject, and Message, as specified for the Web3Forms replacement.
+- Headings use Cormorant Garamond and body text uses Source Sans 3, both self-hosted with `font-display: swap`. Olive `#5c5a32` is used for text and solid surfaces so white-on-olive and olive-on-cream meet WCAG AA. Logo gold `#807830` is used for decorative lines.
+- The home and About pages link to the YouTube films used as section backgrounds on the former site: `https://youtu.be/PrC6FE3ekL4` (home hero), `https://youtu.be/ukEPzZM41xw` (testimonial), and `https://youtu.be/wKI9Yr7GWUU` (About). Full-bleed embeds are not used, because YouTube’s player draws a sign-in wall over the photo when autoplay is blocked. The photos used as the video fallback are the visible backgrounds.
+- The two Venues page films are `assets/video/venue-film-1.mp4` and `venue-film-2.mp4`.
+- “Submit Another Inquiry” still points at `/expo-inquiry`, which is a 404. The custom `404.html` answers it.
+- The contact form uses one required Name field, plus Email, Subject, and Message, and submits through Web3Forms to `sales@migranjaevents.com`.
+- Browsers: recent Chrome, Firefox, Safari, and Edge, plus the last two iOS and Android versions. Layout uses Grid, Flexbox, `clamp()`, and `aspect-ratio`.
