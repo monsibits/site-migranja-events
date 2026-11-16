@@ -1,4 +1,4 @@
 User-agent: *
-Disallow: /
+Allow: /
 
-Sitemap: https://monsibits.github.io/site-migranja-events/sitemap.xml
+Sitemap: https://www.migranjaevents.com/sitemap.xml
