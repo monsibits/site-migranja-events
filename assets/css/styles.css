@@ -1,65 +1,70 @@
 /* Mi Granja Events and Leisure Inc.
-   Colours live in :root so a later brand palette can be swapped in
-   one place. The interim set is warm cream, charcoal, and logo gold.
-   Gold is decorative only; it does not meet AA as small text on cream.
-   Headings use a self-hosted serif; body uses a self-hosted sans. */
+   Colours live in :root so a later palette tweak can be swapped in
+   one place. Official brand colours: Light Orange #FFF0D7, Black
+   #000000, Brown #A4381B, Gray Brown #817B30, and White.
+   Gray Brown is decorative only; it does not meet AA as small text
+   on cream. Headings use a self-hosted Bodoni Moda, a free stand-in
+   for the commercial TAN Mon Cheri (and Apollo) faces in the brand
+   guide. Body uses official DM Sans, also self-hosted. */
 
 @font-face {
-  font-family: "Cormorant Garamond";
+  font-family: "Bodoni Moda";
   font-style: normal;
-  font-weight: 300 700;
+  font-weight: 400 900;
   font-display: swap;
-  src: url("../fonts/cormorant-garamond.woff2") format("woff2");
+  src: url("../fonts/bodoni-moda.woff2") format("woff2");
 }
 
 @font-face {
-  font-family: "Cormorant Garamond";
+  font-family: "Bodoni Moda";
   font-style: italic;
-  font-weight: 500;
+  font-weight: 400 900;
   font-display: swap;
-  src: url("../fonts/cormorant-garamond-italic.woff2") format("woff2");
+  src: url("../fonts/bodoni-moda-italic.woff2") format("woff2");
 }
 
 @font-face {
-  font-family: "Source Sans 3";
+  font-family: "DM Sans";
   font-style: normal;
-  font-weight: 200 900;
+  font-weight: 100 1000;
   font-display: swap;
-  src: url("../fonts/source-sans-3.woff2") format("woff2");
+  src: url("../fonts/dm-sans.woff2") format("woff2");
 }
 
 @font-face {
-  font-family: "Source Sans 3";
+  font-family: "DM Sans";
   font-style: italic;
-  font-weight: 400;
+  font-weight: 100 1000;
   font-display: swap;
-  src: url("../fonts/source-sans-3-italic.woff2") format("woff2");
+  src: url("../fonts/dm-sans-italic.woff2") format("woff2");
 }
 
 :root {
-  /* Interim palette. Change only these values when brand colours arrive. */
-  --color-bg: #f7f3eb;
-  --color-bg-raised: #fffbf5;
-  --color-bg-raised-rgb: 255, 251, 245;
-  --color-text: #2b2a28;
-  --color-text-muted: #5c5854;
-  --color-primary: #2b2a28;
-  --color-primary-hover: #161514;
-  --color-primary-rgb: 43, 42, 40;
+  /* Official brand tokens. */
+  --color-bg: #fff0d7;
+  --color-bg-raised: #ffffff;
+  --color-bg-raised-rgb: 255, 255, 255;
+  --color-text: #000000;
+  --color-text-muted: #5a4033;
+  --color-primary: #a4381b;
+  --color-primary-hover: #7c2a14;
+  --color-primary-rgb: 164, 56, 27;
   --color-on-primary: #ffffff;
   --color-on-primary-rgb: 255, 255, 255;
-  --color-accent: #807830;
-  --color-border: #d9d0be;
-  --color-overlay-rgb: 28, 26, 20;
-  --font-display: "Cormorant Garamond", Georgia, "Times New Roman", serif;
-  --font-body: "Source Sans 3", "Segoe UI", system-ui, sans-serif;
-  --header-offset: 4.85rem;
+  --color-ink: #000000;
+  --color-ink-rgb: 0, 0, 0;
+  --color-accent: #817b30;
+  --color-border: #e4d4b3;
+  --color-overlay-rgb: 0, 0, 0;
+  --font-display: "Bodoni Moda", "Palatino Linotype", Palatino, Georgia, serif;
+  --font-body: "DM Sans", "Segoe UI", system-ui, sans-serif;
+  --header-offset: 5.85rem;
   --radius-btn: 0.25rem;
   --radius: 0.7rem;
   --wrap: 72rem;
   --gap: clamp(1rem, 3vw, 2.25rem);
-  --shadow-soft: 0 10px 28px rgba(var(--color-primary-rgb), 0.07);
-  --shadow-hover: 0 14px 32px rgba(var(--color-primary-rgb), 0.12);
+  --shadow-soft: 0 10px 28px rgba(var(--color-ink-rgb), 0.07);
+  --shadow-hover: 0 14px 32px rgba(var(--color-ink-rgb), 0.12);
 }
 
 *,
@@ -201,7 +206,7 @@ a:hover {
 }
 
 .logo img {
-  height: 2.35rem;
+  height: 4.25rem;
   width: auto;
 }
 
@@ -507,7 +512,7 @@ button.btn {
 }
 
 .tone-olive {
-  background: var(--color-primary);
+  background: var(--color-ink);
   color: var(--color-on-primary);
 }
 
@@ -715,7 +720,7 @@ button.btn {
 
 .prep {
   padding: 0;
-  background: var(--color-primary);
+  background: var(--color-ink);
   color: var(--color-on-primary);
 }
 
@@ -755,7 +760,7 @@ button.btn {
 }
 
 .site-footer {
-  background: var(--color-primary);
+  background: var(--color-ink);
   color: var(--color-on-primary);
   padding: 2.4rem 0 2rem;
 }
@@ -1079,7 +1084,7 @@ button.btn {
 .video-grid video {
   width: 100%;
   height: auto;
-  background: var(--color-primary);
+  background: var(--color-ink);
   display: block;
   border-radius: var(--radius);
 }
@@ -1332,11 +1337,11 @@ button.btn {
 
 @media (min-width: 720px) {
   :root {
-    --header-offset: 5.4rem;
+    --header-offset: 6.65rem;
   }
 
   .logo img {
-    height: 3.2rem;
+    height: 5rem;
   }
 
   .feature-grid,
