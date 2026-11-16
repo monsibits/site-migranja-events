@@ -1,59 +1,36 @@
 # Mi Granja Events and Leisure Inc.
 
-Static copy of [migranjaevents.com](https://www.migranjaevents.com) for a GitHub Pages preview. This is a development preview: every page sends `noindex, nofollow`, and `robots.txt` disallows the whole site.
-
-Published URL (after merge to `main`): https://monsibits.github.io/site-migranja-events/
+Static website for [www.migranjaevents.com](https://www.migranjaevents.com/). The live domain is served by GitHub Pages. This repository is the source.
 
 ## Folder structure
 
-```
-index.html                          Home (/)
-home/index.html                     Redirects /home to /
-about/index.html                    About Us
-contact/index.html                  Contact form
-portfolio-1/index.html              Venues (nav label; path kept)
-expo-inquiry-post-submit/index.html Thank-you page
-404.html                            Unknown URLs
-robots.txt                          Disallow: /
-sitemap.xml
-.nojekyll                           Serve files as-is (no Jekyll)
-assets/css/styles.css
-assets/js/main.js                   Menu and photo carousel
-assets/img/                         Logo, favicon, photos (WebP)
-assets/video/                       Venue films (re-encoded from Squarespace HLS)
-```
+- `_src/partials/` — shared head, header, and footer
+- `_src/pages/` — one template per page
+- `scripts/build.py` — writes HTML into the site root
+- `assets/css/` — `styles.css` imports tokens, base, layout, and components
+- `assets/js/main.js` — menu, motion, form intent, and gallery lightbox (all progressive)
+- `assets/img/`, `assets/fonts/`, `assets/video/`
 
-Internal links and assets use the `/site-migranja-events/` prefix so they resolve on GitHub Pages project sites. There is no `CNAME` file.
+## Edit and publish
 
-## How to edit text
+1. Change copy in the matching file under `_src/pages/`. Shared chrome lives in `_src/partials/`.
+2. Brand colours and type are in `assets/css/tokens.css`.
+3. Run `python3 scripts/build.py` from the repository root.
+4. Commit the templates and the built HTML together.
 
-Page copy lives in the HTML file for that page. Change the words in the `<main>` element and keep the heading text the same unless the live site changes. Shared chrome (logo, nav, footer, email, address) is repeated at the top and bottom of each page, so update every page if those change.
-
-- Email: `sales@migranjaevents.com`
-- Address: Balagbag, Mahabang Kahoy Lejos, Indang, Cavite, Region 4-A (CALABARZON), 4122
-- Nav: Home, Venues (`/portfolio-1/`), About Us, Contact Us, Inquire (also `/contact/`)
-
-Colours and type are in `assets/css/styles.css` (`--accent`, `--font-display`, `--font-body`).
-
-## How to publish
-
-GitHub Pages is already set to deploy from the `main` branch root (legacy Pages, not a workflow). Merge this branch into `main`. The site is then served at https://monsibits.github.io/site-migranja-events/. Do not add a `CNAME` or change DNS from this repository.
-
-To preview locally, serve the repository so that path exists:
+To preview locally:
 
 ```bash
-cd /path/to/parent
-ln -s /path/to/this/repo site-migranja-events
 python3 -m http.server 8080
 ```
 
-Open http://127.0.0.1:8080/site-migranja-events/
+Open http://127.0.0.1:8080/
 
-## TODO
+## Notes
 
-- The Squarespace theme names the body font `miller-display`, but the public site has an empty Typekit id, so that font file is not available. Body text uses a Georgia serif stack. Headings use Helvetica Neue / Arial, as on the live site.
-- Olive `#7f8164` is shifted to `#72745a` so white text on olive, and olive text on white, meet WCAG AA.
-- The live site uses three YouTube films as section backgrounds: `https://youtu.be/PrC6FE3ekL4` (home hero), `https://youtu.be/ukEPzZM41xw` (testimonial), and `https://youtu.be/wKI9Yr7GWUU` (About). Those pages link to the films. Full-bleed embeds are not used, because YouTube’s player draws a sign-in wall over the photo when autoplay is blocked. The live sections also set playback speed to 0.5, which a standard embed cannot set. The photos Squarespace uses as the video fallback are the visible backgrounds.
-- The two Venues page films were downloaded from Squarespace HLS (AES-128) and saved as `assets/video/venue-film-1.mp4` (about 69 seconds) and `venue-film-2.mp4` (about 107 seconds), scaled to 1280px wide. Originals were 1914×1080 and 1920×1080.
-- “Submit Another Inquiry” still points at `/expo-inquiry`, which is a 404 on the live site and here. The custom `404.html` answers it.
-- The contact form on the live site splits Name into First Name and Last Name. This form uses one required Name field, plus Email, Subject, and Message, as specified for the Web3Forms replacement.
+- The palette follows a 60/30/10 split: Light Orange `#FFF0D7` for grounds, White for raised surfaces, and Brown `#A4381B` for buttons, links, and accents. Text and the footer use a deep warm brown `#3B1F14` (not black) that meets WCAG AAA on cream and white. Gray Brown `#817B30` is decorative only.
+- Headings use self-hosted Bodoni Moda, a free stand-in for the commercial TAN Mon Cheri and Apollo faces in the brand guide. Body text uses official DM Sans, also self-hosted, with `font-display: swap`.
+- The contact form uses Web3Forms (`sales@migranjaevents.com`) and can request an ocular visit, a quote, or a general inquiry, with an optional preferred date. The redirect is `/expo-inquiry-post-submit/`.
+- `/home/` redirects to `/`. `/portfolio-1/` redirects to `/venues/`.
+- Films used as references on the former site remain as YouTube links, not full-bleed embeds, because the YouTube player can draw a sign-in wall over the photo when autoplay is blocked: `https://youtu.be/PrC6FE3ekL4`, `https://youtu.be/ukEPzZM41xw`, and `https://youtu.be/wKI9Yr7GWUU`.
+- Browsers: recent Chrome, Firefox, Safari, and Edge, plus the last two iOS and Android versions. Layout uses Grid, Flexbox, `clamp()`, and `aspect-ratio`.

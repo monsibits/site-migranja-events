@@ -1,0 +1,74 @@
+---
+title: Contact Us | Mi Granja Events and Leisure Inc.
+description: Contact Mi Granja Events and Leisure Inc. in Indang, Cavite to book an ocular visit, request a quote, or start planning your celebration. Email sales@migranjaevents.com.
+canonical: /contact/
+current: contact
+og_image: /assets/img/hero-pavilion.webp
+---
+{% include head.html %}
+{% include header.html %}
+<main id="main">
+  <section class="page-hero section-cream">
+    <div class="wrap">
+      <p class="eyebrow">Contact</p>
+      <h1>We would like to hear from you.</h1>
+      <hr class="rule">
+      <p class="lead">Book an ocular visit, request a quote, or send a message and we will help you begin planning your celebration.</p>
+    </div>
+  </section>
+  <section class="section section-white" id="book-a-visit">
+    <div class="wrap contact-grid">
+      <form class="inquiry-form" action="https://api.web3forms.com/submit" method="post" aria-labelledby="contact-heading">
+        <h2 id="contact-heading">Write to us</h2>
+        <input type="hidden" name="access_key" value="958a26aa-1b54-4ebc-a2b9-d867473f64cb">
+        <input type="hidden" name="redirect" value="https://www.migranjaevents.com/expo-inquiry-post-submit/">
+        <div class="hp">
+          <label for="botcheck">Leave this blank</label>
+          <input type="checkbox" id="botcheck" name="botcheck" tabindex="-1" autocomplete="off">
+        </div>
+        <div class="field">
+          <label for="inquiry-type">I would like to <span class="req">(required)</span></label>
+          <select id="inquiry-type" name="inquiry_type" required>
+            <option value="Book an ocular visit" selected>Book an ocular visit</option>
+            <option value="Request a quote">Request a quote</option>
+            <option value="General inquiry">Send a general inquiry</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="name">Name <span class="req">(required)</span></label>
+          <input id="name" name="name" type="text" required autocomplete="name">
+        </div>
+        <div class="field">
+          <label for="email">Email <span class="req">(required)</span></label>
+          <input id="email" name="email" type="email" required autocomplete="email">
+        </div>
+        <div class="field">
+          <label for="phone">Phone</label>
+          <input id="phone" name="phone" type="tel" autocomplete="tel">
+        </div>
+        <div class="field">
+          <label for="preferred-date">Preferred date for an ocular visit</label>
+          <input id="preferred-date" name="preferred_visit_date" type="date">
+        </div>
+        <div class="field">
+          <label for="subject">Subject <span class="req">(required)</span></label>
+          <input id="subject" name="subject" type="text" required>
+        </div>
+        <div class="field">
+          <label for="message">Message <span class="req">(required)</span></label>
+          <textarea id="message" name="message" required></textarea>
+        </div>
+        <div>
+          <button class="btn btn-solid" type="submit">Send inquiry</button>
+        </div>
+      </form>
+      <aside class="contact-aside">
+        <h2>Visit or write</h2>
+        <p><a href="https://maps.app.goo.gl/GJ1ccfwD1sTS2prUA" target="_blank" rel="noopener noreferrer">Balagbag, Mahabang Kahoy Lejos, Indang, Cavite, Region 4-A (CALABARZON), 4122</a></p>
+        <p><a href="mailto:sales@migranjaevents.com">sales@migranjaevents.com</a></p>
+        <p class="muted">If you already have a date or an approximate guest count, include them in your message. If those details are still taking shape, write what you know.</p>
+      </aside>
+    </div>
+  </section>
+</main>
+{% include footer.html %}
