@@ -28,8 +28,8 @@ Open http://127.0.0.1:8080/
 
 ## Notes
 
-- The palette follows a 60/30/10 split: Light Orange `#FFF0D7` for grounds, White for raised surfaces, and Brown `#A4381B` for buttons, links, and accents. Text and the footer use a deep warm brown `#3B1F14` (not black) that meets WCAG AAA on cream and white. Gray Brown `#817B30` is decorative only.
-- Headings use self-hosted Bodoni Moda, a free stand-in for the commercial TAN Mon Cheri and Apollo faces in the brand guide. Body text uses official DM Sans, also self-hosted, with `font-display: swap`.
+- The site is mostly white, with a very light cream `#FFF8EC` on alternating sections. Brown `#A4381B` is reserved for primary buttons, links, and small accents. Body text is a deep warm near-charcoal `#2E2420` (not black) that meets WCAG AA on white and cream. The footer is light. Gray Brown `#817B30` is not used.
+- Headings use self-hosted Lora (weight 600), a readable serif stand-in for the commercial TAN Mon Cheri and Apollo faces in the brand guide. Body text uses official DM Sans at 18px / 1.65, also self-hosted, with `font-display: swap`.
 - The contact form uses Web3Forms (`sales@migranjaevents.com`) and can request an ocular visit, a quote, or a general inquiry, with an optional preferred date. The redirect is `/expo-inquiry-post-submit/`.
 - `/home/` redirects to `/`. `/portfolio-1/` redirects to `/venues/`.
 - Films used as references on the former site remain as YouTube links, not full-bleed embeds, because the YouTube player can draw a sign-in wall over the photo when autoplay is blocked: `https://youtu.be/PrC6FE3ekL4`, `https://youtu.be/ukEPzZM41xw`, and `https://youtu.be/wKI9Yr7GWUU`.

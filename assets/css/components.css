@@ -7,10 +7,9 @@
   padding: 0.7rem 1.35rem;
   border-radius: var(--radius-btn);
   font-family: var(--font-body);
-  font-size: 0.82rem;
-  font-weight: 650;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
+  font-size: 1rem;
+  font-weight: 600;
+  letter-spacing: 0.01em;
   text-decoration: none;
   line-height: 1.2;
   border: 1px solid transparent;
@@ -41,73 +40,47 @@
 }
 
 .btn-light {
-  background: var(--color-bg-raised);
-  border-color: var(--color-bg-raised);
+  background: var(--color-bg-soft);
+  border-color: var(--color-border);
   color: var(--color-primary);
 }
 
 .btn-light:hover {
-  background: var(--color-bg);
+  background: var(--color-bg-raised);
+  border-color: var(--color-primary);
   color: var(--color-primary-hover);
 }
 
 .hero {
-  position: relative;
-  min-height: min(92vh, 52rem);
-  display: grid;
-  align-items: end;
-  color: var(--color-on-primary);
-  overflow: hidden;
-}
-
-.hero-media {
-  position: absolute;
-  inset: 0;
+  background: var(--color-bg-raised);
 }
 
 .hero-media img {
   width: 100%;
-  height: 100%;
+  height: auto;
+  max-height: min(62vh, 38rem);
   object-fit: cover;
-}
-
-.hero-media::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  background:
-    linear-gradient(
-      to top,
-      rgba(var(--color-overlay-rgb), 0.62) 0%,
-      rgba(var(--color-overlay-rgb), 0.22) 48%,
-      rgba(var(--color-overlay-rgb), 0.08) 100%
-    );
+  object-position: center;
 }
 
 .hero-copy {
-  position: relative;
-  z-index: 1;
-  padding: 5rem 0 4rem;
+  padding: clamp(2.5rem, 6vw, 4.5rem) 0 clamp(3rem, 7vw, 5.5rem);
   width: min(var(--wrap), calc(100% - 2rem));
   margin-inline: auto;
 }
 
-.hero-copy .eyebrow {
-  color: #f3e2c0;
-}
-
 .hero h1 {
-  color: #ffffff;
-  font-size: clamp(2.7rem, 7.2vw, 6.15rem);
-  max-width: 14ch;
+  color: var(--color-text);
+  max-width: 16ch;
   margin: 0 0 1rem;
   text-wrap: balance;
 }
 
 .hero-lead {
-  max-width: 34rem;
-  font-size: clamp(1.05rem, 1.6vw, 1.2rem);
-  color: rgba(255, 255, 255, 0.92);
+  max-width: var(--measure);
+  font-size: 1.125rem;
+  line-height: 1.65;
+  color: var(--color-text);
   margin-bottom: 1.75rem;
 }
 
@@ -199,9 +172,9 @@ a.card:hover {
   margin: 0;
   font-family: var(--font-display);
   font-style: italic;
-  font-size: clamp(1.35rem, 2.6vw, 1.9rem);
-  line-height: 1.45;
-  font-weight: 500;
+  font-size: clamp(1.25rem, 2.4vw, 1.7rem);
+  line-height: 1.5;
+  font-weight: 600;
 }
 
 .quote-block footer {
@@ -211,28 +184,20 @@ a.card:hover {
 }
 
 .cta-band {
-  background: var(--color-primary);
-  color: var(--color-on-primary);
+  background: var(--color-bg-soft);
+  color: var(--color-text);
   padding: var(--space-section) 0;
   text-align: center;
 }
 
 .cta-band h2,
 .cta-band p {
-  color: var(--color-on-primary);
+  color: var(--color-text);
 }
 
 .cta-band p {
-  max-width: 34rem;
+  max-width: var(--measure);
   margin: 0 auto 1.5rem;
-}
-
-.cta-band .eyebrow {
-  color: #f3e2c0;
-}
-
-.cta-band .btn-light:focus-visible {
-  outline-color: #ffffff;
 }
 
 .values {
@@ -250,7 +215,7 @@ a.card:hover {
   padding: 1.4rem 1.35rem 1.5rem;
   background: var(--color-bg-raised);
   border-radius: var(--radius);
-  border-top: 2px solid var(--color-primary);
+  border: 1px solid var(--color-border);
 }
 
 .faq-list {
@@ -268,7 +233,7 @@ a.card:hover {
 
 .faq-list summary {
   cursor: pointer;
-  font-weight: 650;
+  font-weight: 600;
   min-height: 52px;
   display: flex;
   align-items: center;
@@ -323,7 +288,7 @@ a.card:hover {
 
 .field label {
   display: block;
-  font-weight: 650;
+  font-weight: 600;
   font-size: 0.9rem;
   margin-bottom: 0.35rem;
 }
@@ -358,6 +323,12 @@ a.card:hover {
   outline: 2px solid var(--color-primary);
   outline-offset: 0;
   border-color: var(--color-primary);
+}
+
+.field input::placeholder,
+.field textarea::placeholder {
+  color: var(--color-text-muted);
+  opacity: 1;
 }
 
 .hp {
@@ -402,15 +373,15 @@ a.card:hover {
 .lightbox {
   border: 0;
   padding: 0;
-  background: rgba(var(--color-ink-rgb), 0.92);
-  color: #ffffff;
+  background: rgba(var(--color-text-rgb), 0.94);
+  color: var(--color-on-dark);
   max-width: 100%;
   width: 100%;
   height: 100%;
 }
 
 .lightbox::backdrop {
-  background: rgba(var(--color-ink-rgb), 0.92);
+  background: rgba(var(--color-text-rgb), 0.94);
 }
 
 .lightbox-inner {
@@ -449,7 +420,7 @@ a.card:hover {
   min-height: 44px;
   border: 0;
   background: transparent;
-  color: #ffffff;
+  color: var(--color-on-dark);
   font: inherit;
   cursor: pointer;
 }
@@ -459,12 +430,12 @@ a.card:hover {
 }
 
 .article-header {
-  max-width: 42rem;
+  max-width: var(--measure);
   margin-bottom: 2rem;
 }
 
 .article-body {
-  max-width: 42rem;
+  max-width: var(--measure);
 }
 
 .article-body h2 {
@@ -475,7 +446,7 @@ a.card:hover {
   display: inline-block;
   margin-bottom: 1rem;
   font-size: 0.9rem;
-  font-weight: 650;
+  font-weight: 600;
   text-decoration: none;
 }
 
@@ -486,7 +457,7 @@ a.card:hover {
 }
 
 .thin-note {
-  max-width: 40rem;
+  max-width: var(--measure);
   color: var(--color-text-muted);
 }
 
@@ -504,12 +475,12 @@ a.card:hover {
 }
 
 .stack-tight {
-  max-width: 38rem;
+  max-width: var(--measure);
   margin-bottom: 2rem;
 }
 
 .prose {
-  max-width: 44rem;
+  max-width: var(--measure);
 }
 
 .quote-left {
