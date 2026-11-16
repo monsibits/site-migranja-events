@@ -51,7 +51,6 @@ Open http://127.0.0.1:8080/site-migranja-events/
 
 ## TODO
 
-- Replace `WEB3FORMS_ACCESS_KEY_PLACEHOLDER` in `contact/index.html` with a Web3Forms access key. The form posts to `https://api.web3forms.com/submit` and redirects to `/expo-inquiry-post-submit/`. A honeypot field named `botcheck` is included. Do not commit a real key into a public repository until the owner chooses to.
 - The Squarespace theme names the body font `miller-display`, but the public site has an empty Typekit id, so that font file is not available. Body text uses a Georgia serif stack. Headings use Helvetica Neue / Arial, as on the live site.
 - Olive `#7f8164` is shifted to `#72745a` so white text on olive, and olive text on white, meet WCAG AA.
 - The live site uses three YouTube films as section backgrounds: `https://youtu.be/PrC6FE3ekL4` (home hero), `https://youtu.be/ukEPzZM41xw` (testimonial), and `https://youtu.be/wKI9Yr7GWUU` (About). Those pages link to the films. Full-bleed embeds are not used, because YouTube’s player draws a sign-in wall over the photo when autoplay is blocked. The live sections also set playback speed to 0.5, which a standard embed cannot set. The photos Squarespace uses as the video fallback are the visible backgrounds.
