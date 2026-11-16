@@ -35,7 +35,7 @@ Page copy lives in the HTML file for that page. Change the words in the `<main>`
 - Address: Balagbag, Mahabang Kahoy Lejos, Indang, Cavite, Region 4-A (CALABARZON), 4122
 - Nav: Home, Venues (`/portfolio-1/`), About Us, Blog (`/blog/`), Contact Us, Inquire (also `/contact/`)
 
-Colours and type are in `assets/css/styles.css` (`--accent`, `--gold`, `--paper`, `--font-display`, `--font-body`). Font files and their licenses are in `assets/fonts/`.
+Colours and type are in `assets/css/styles.css`. All colours are CSS custom properties in the `:root` block (`--color-primary`, `--color-accent`, `--color-bg`, and the rest). Font files and their licenses are in `assets/fonts/`.
 
 ## How to add a blog article
 
@@ -60,7 +60,7 @@ Open http://127.0.0.1:8080/
 
 ## Notes
 
-- Headings use Cormorant Garamond and body text uses Source Sans 3, both self-hosted with `font-display: swap`. Olive `#5c5a32` is used for text and solid surfaces so white-on-olive and olive-on-cream meet WCAG AA. Logo gold `#807830` is used for decorative lines.
+- Headings use Cormorant Garamond and body text uses Source Sans 3, both self-hosted with `font-display: swap`. The interim palette is set in `:root`: warm cream (`--color-bg`), charcoal `#2b2a28` (`--color-primary`, `--color-text`) for buttons, dark bands, and the footer, and logo gold `#807830` (`--color-accent`) for decorative lines only. Charcoal-on-cream and white-on-charcoal meet WCAG AA. Swap the `:root` values when the brand colours arrive.
 - The home and About pages link to the YouTube films used as section backgrounds on the former site: `https://youtu.be/PrC6FE3ekL4` (home hero), `https://youtu.be/ukEPzZM41xw` (testimonial), and `https://youtu.be/wKI9Yr7GWUU` (About). Full-bleed embeds are not used, because YouTube’s player draws a sign-in wall over the photo when autoplay is blocked. The photos used as the video fallback are the visible backgrounds.
 - The two Venues page films are `assets/video/venue-film-1.mp4` and `venue-film-2.mp4`.
 - “Submit Another Inquiry” still points at `/expo-inquiry`, which is a 404. The custom `404.html` answers it.
