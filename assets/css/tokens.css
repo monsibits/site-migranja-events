@@ -51,7 +51,7 @@
   --color-border: #e6dfd4;
   --font-display: "Lora", Georgia, "Times New Roman", serif;
   --font-body: "DM Sans", "Segoe UI", system-ui, sans-serif;
-  --header-offset: 4.35rem;
+  --header-offset: 5.75rem;
   --sticky-cta-space: 0px;
   --radius-btn: 0.25rem;
   --radius: 0.75rem;
@@ -65,7 +65,7 @@
 
 @media (min-width: 720px) {
   :root {
-    --header-offset: 4.85rem;
+    --header-offset: 6.5rem;
   }
 }
 

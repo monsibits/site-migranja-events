@@ -26,13 +26,13 @@
 }
 
 .logo img {
-  height: 2.4rem;
+  height: 4.15rem;
   width: auto;
 }
 
 @media (min-width: 720px) {
   .logo img {
-    height: 2.75rem;
+    height: 4.85rem;
   }
 }
 
