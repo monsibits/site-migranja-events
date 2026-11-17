@@ -32,5 +32,4 @@ Open http://127.0.0.1:8080/
 - Headings use self-hosted Lora (weight 600), a readable serif stand-in for the commercial TAN Mon Cheri and Apollo faces in the brand guide. Body text uses official DM Sans at 18px / 1.65, also self-hosted, with `font-display: swap`.
 - The contact form uses Web3Forms (`sales@migranjaevents.com`) and can request an ocular visit, a quote, or a general inquiry, with an optional preferred date. The redirect is `/expo-inquiry-post-submit/`.
 - `/home/` redirects to `/`. `/portfolio-1/` redirects to `/venues/`.
-- Films used as references on the former site remain as YouTube links, not full-bleed embeds, because the YouTube player can draw a sign-in wall over the photo when autoplay is blocked: `https://youtu.be/PrC6FE3ekL4`, `https://youtu.be/ukEPzZM41xw`, and `https://youtu.be/wKI9Yr7GWUU`.
 - Browsers: recent Chrome, Firefox, Safari, and Edge, plus the last two iOS and Android versions. Layout uses Grid, Flexbox, `clamp()`, and `aspect-ratio`.
