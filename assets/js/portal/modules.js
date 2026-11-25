@@ -43,6 +43,32 @@ export function sampleChip(row) {
   return ' <span class="sample-chip">SAMPLE</span>';
 }
 
+function sampleLabel(row, ...fields) {
+  let name = "";
+  for (const field of fields) {
+    if (row && row[field]) { name = String(row[field]); break; }
+  }
+  const sample = isSample(row);
+  if (sample) name = name.replace(/^SAMPLE\s*[·•-]\s*/i, "");
+  return `${esc(name)}${sample ? ' <span class="sample-chip">SAMPLE</span>' : ""}`;
+}
+
+export async function confirmRealWrite() {
+  const user = ctx.currentUser || ctx.user;
+  if (!user || user.isSample || user.is_sample) return true;
+  let settings;
+  try { settings = await api("/api/settings"); } catch { return true; }
+  if (!settings || !settings.demo_mode || !settings.hasSample) return true;
+  const ok = await confirmAction(
+    "Demo mode is on",
+    "This will be saved as a real record. The dashboard and reports currently include SAMPLE figures. Turn Demo mode off first so the totals stay clear?",
+    "Turn off and save"
+  );
+  if (!ok) return false;
+  await api("/api/settings", { method: "PATCH", body: { demo_mode: false } });
+  return true;
+}
+
 function money(value) {
   if (value === null || value === undefined || value === "") return "—";
   return formatMoney(value);
@@ -740,6 +766,7 @@ function renderQuotes(panel, data) {
     btn.addEventListener("click", async () => {
       const ok = await confirmAction("Accept this quote?", "This can create a contract from the quote.");
       if (!ok) return;
+      if (!(await confirmRealWrite())) return;
       try {
         await api(`/api/quotes/${btn.dataset.acceptQuote}/accept`, { method: "POST", body: {} });
         await viewSales();
@@ -885,6 +912,7 @@ function renderPayments(panel, data) {
   formFrom("[data-add-payment]", async (formData) => {
     const body = Object.fromEntries(formData);
     if (!body.event_id) delete body.event_id;
+    if (!(await confirmRealWrite())) return;
     await api("/api/payments", { method: "POST", body });
     await viewSales();
   });
@@ -1002,7 +1030,7 @@ function renderHkJobs(panel, jobsData, areasData, templatesData) {
     ${canCreate ? `<details class="portal-card"><summary>New cleaning job</summary>
       <form class="portal-form" data-add-job>
         <div class="field"><label for="job-title">Title</label><input id="job-title" name="title" required maxlength="160"></div>
-        <div class="field"><label for="job-kind">Kind</label><select id="job-kind" name="kind">${kinds.map((k) => `<option value="${k}">${k}</option>`).join("")}</select></div>
+        <div class="field"><label for="job-kind">Kind</label><select id="job-kind" name="kind">${kinds.map((k) => `<option value="${esc(k)}">${esc(friendlyStatus(k))}</option>`).join("")}</select></div>
         <div class="field"><label for="job-due">Due</label><input id="job-due" name="due" type="date"></div>
         <div class="field"><label for="job-area">Area</label><select id="job-area" name="area_id"><option value="">None</option>${optionList(areas, "", (a) => a.name)}</select></div>
         <div class="field"><label for="job-event">Event</label><select id="job-event" name="event_id"></select></div>
@@ -1094,7 +1122,7 @@ function renderTemplates(panel, templatesData, areasData) {
     ${canEdit ? `<details class="portal-card"><summary>New checklist template</summary>
       <form class="portal-form" data-add-tmpl>
         <div class="field"><label for="tm-name">Name</label><input id="tm-name" name="name" required></div>
-        <div class="field"><label for="tm-kind">Kind</label><select id="tm-kind" name="kind">${kinds.map((k) => `<option>${k}</option>`).join("")}</select></div>
+        <div class="field"><label for="tm-kind">Kind</label><select id="tm-kind" name="kind">${kinds.map((k) => `<option value="${esc(k)}">${esc(friendlyStatus(k))}</option>`).join("")}</select></div>
         <div class="field"><label for="tm-area">Area</label><select id="tm-area" name="area_id"><option value="">None</option>${optionList(areas, "", (a) => a.name)}</select></div>
         <div class="field"><label for="tm-items">Checklist items (one per line)</label><textarea id="tm-items" name="items" rows="5" placeholder="Wipe tables&#10;Sweep floor"></textarea></div>
         <div data-form-error></div>
@@ -1447,11 +1475,14 @@ export async function viewAccounting() {
   }
   const tab = currentTab("expenses");
   const range = params().get("range") || "monthly";
+  const from = params().get("from") || "";
+  const to = params().get("to") || "";
+  const periodQuery = `range=${encodeURIComponent(range)}${from ? `&from=${encodeURIComponent(from)}` : ""}${to ? `&to=${encodeURIComponent(to)}` : ""}`;
   const [expenses, petty, pnl, cash, profit] = await Promise.all([
     api("/api/expenses"),
     api("/api/petty-cash"),
-    api(`/api/accounting/pnl?range=${encodeURIComponent(range)}`),
-    api(`/api/accounting/cashflow?range=${encodeURIComponent(range)}`),
+    api(`/api/accounting/pnl?${periodQuery}`),
+    api(`/api/accounting/cashflow?${periodQuery}`),
     api("/api/accounting/event-profit")
   ]);
   const tabs = [
@@ -1484,11 +1515,15 @@ function renderExpenses(panel, data) {
   const rows = data.expenses || [];
   const categories = data.categories || ["food", "decor", "utilities", "supplies", "labor", "transport", "maintenance", "marketing", "fees", "other"];
   const totals = data.totals || { real: 0, sample: 0 };
+  const demoOn = !!(data.demoMode || (ctx.lastDemo && ctx.lastDemo.demoMode));
+  const combined = (Number(totals.real) || 0) + (Number(totals.sample) || 0);
   panel.innerHTML = `
-    <div class="card-grid cols-2">
+    ${demoOn ? `<div class="card-grid cols-2">
+      <article class="portal-card"><p class="kicker">Expenses</p><p class="stat">${money(combined)}</p><p class="tiny muted">Demo mode is on, so SAMPLE expenses are included.</p></article>
+    </div>` : `<div class="card-grid cols-2">
       <article class="portal-card"><p class="kicker">Real expenses</p><p class="stat">${money(totals.real)}</p></article>
       <article class="portal-card"><p class="kicker">Sample expenses</p><p class="stat">${money(totals.sample)}</p></article>
-    </div>
+    </div>`}
     <details class="portal-card"><summary>Record an expense</summary>
       <form class="portal-form" data-add-expense>
         <div class="field"><label for="ex-date">Date</label><input id="ex-date" name="date" type="date" value="${todayISO()}" required></div>
@@ -1516,6 +1551,7 @@ function renderExpenses(panel, data) {
   formFrom("[data-add-expense]", async (formData) => {
     const body = Object.fromEntries(formData);
     if (!body.event_id) delete body.event_id;
+    if (!(await confirmRealWrite())) return;
     await api("/api/expenses", { method: "POST", body });
     await viewAccounting();
   });
@@ -1565,8 +1601,15 @@ function renderPetty(panel, data) {
 }
 
 function renderPnl(panel, data, range) {
+  const monthVal = String(data.from || "").slice(0, 7);
   panel.innerHTML = `
     <div class="filter-tabs">${rangeLinks("accounting", "pnl", range)}</div>
+    <form class="toolbar" data-pnl-period>
+      <div class="field"><label for="pnl-month">Month</label><input id="pnl-month" name="month" type="month" value="${esc(monthVal)}"></div>
+      <div class="field"><label for="pnl-from">From</label><input id="pnl-from" name="from" type="date" value="${esc(data.from || "")}"></div>
+      <div class="field"><label for="pnl-to">To</label><input id="pnl-to" name="to" type="date" value="${esc(data.to || "")}"></div>
+      <button class="btn btn-solid" type="submit">Apply</button>
+    </form>
     <p class="muted">${esc(data.from || "")} to ${esc(data.to || "")}</p>
     <div class="card-grid cols-3">
       <article class="portal-card"><p class="kicker">Income</p><p class="stat">${money(data.income)}</p></article>
@@ -1580,6 +1623,28 @@ function renderPnl(panel, data, range) {
     ${!data.demoMode && data.sample ? `<p class="muted tiny">Sample income ${money(data.sample.income)} · sample expenses ${money(data.sample.expenses)}. These are not in the figures above.</p>` : ""}
     ${data.demoMode ? `<p class="muted tiny">Demo mode is on, so SAMPLE income and expenses are included. They stay marked SAMPLE in lists and exports.</p>` : ""}
   `;
+  const form = panel.querySelector("[data-pnl-period]");
+  if (form) {
+    form.addEventListener("change", (event) => {
+      if (event.target && event.target.name === "month" && event.target.value) {
+        const [year, month] = event.target.value.split("-");
+        const last = new Date(Number(year), Number(month), 0).getDate();
+        form.from.value = `${event.target.value}-01`;
+        form.to.value = `${event.target.value}-${String(last).padStart(2, "0")}`;
+      }
+    });
+    form.addEventListener("submit", (event) => {
+      event.preventDefault();
+      const from = String(form.from.value || "").trim();
+      const to = String(form.to.value || "").trim();
+      const next = new URLSearchParams();
+      next.set("tab", "pnl");
+      next.set("range", from && to ? "custom" : (range || "monthly"));
+      if (from) next.set("from", from);
+      if (to) next.set("to", to);
+      window.location.hash = `#/accounting?${next.toString()}`;
+    });
+  }
 }
 
 function renderCashflow(panel, data, range) {
@@ -1873,7 +1938,7 @@ export async function viewOpsReports() {
         <thead><tr><th>Date</th><th>Event</th><th>Venue</th><th>Status</th></tr></thead>
         <tbody>${(summary.eventList || []).slice(0, 40).map((event) => `<tr>
           <td>${esc(event.date || "")}</td>
-          <td>${esc(event.client || event.title || "")}${sampleChip(event)}</td>
+          <td>${sampleLabel(event, "client", "title")}</td>
           <td>${esc(event.venue || "—")}</td>
           <td><span class="chip">${esc(friendlyStatus(event.status))}</span></td>
         </tr>`).join("")}</tbody>

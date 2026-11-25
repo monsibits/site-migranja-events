@@ -1,6 +1,7 @@
 import { api, clearToken, downloadReport, escapeHtml, formatDate, formatDateTime, formatMoney, getToken, isValidContact, setToken, todayISO, TURNSTILE_SITE_KEY } from "./api.js";
 import {
   confirmAction,
+  confirmRealWrite,
   openModal,
   setModuleContext,
   showToast,
@@ -103,7 +104,7 @@ async function signOut({ everywhere = false } = {}) {
     try { await api(path, { method: "POST", body: {} }); } catch { /* local session will still be cleared */ }
   }
   clearToken();
-  renderLogin(everywhere ? "You have been signed out everywhere. Please sign in again." : "");
+  renderLogin(everywhere ? "You have been signed out everywhere. Please sign in again." : "You've been signed out.");
 }
 
 function navItems(role) {
@@ -577,7 +578,29 @@ async function bindModuleContext() {
   });
 }
 
+let routeGen = 0;
+let pageMain = mainEl;
+
+function scopedMain(gen) {
+  return new Proxy(mainEl, {
+    get(target, prop) {
+      if (gen !== routeGen && (prop === "querySelector" || prop === "querySelectorAll")) {
+        return () => (prop === "querySelector" ? null : []);
+      }
+      const value = target[prop];
+      return typeof value === "function" ? value.bind(target) : value;
+    },
+    set(target, prop, value) {
+      if (prop === "innerHTML" && gen !== routeGen) return true;
+      target[prop] = value;
+      return true;
+    }
+  });
+}
+
 async function renderRoute() {
+  const gen = ++routeGen;
+  pageMain = scopedMain(gen);
   setAccountMenu(false);
   const route = currentRoute();
   setPageTitle(route);
@@ -588,8 +611,19 @@ async function renderRoute() {
     return;
   }
   bindModuleContext();
+  setModuleContext({
+    main: scopedMain(gen),
+    currentUser,
+    user: currentUser,
+    users: usersCache,
+    api,
+    formatDate,
+    formatMoney,
+    downloadReport,
+    go: (routeName) => { window.location.hash = `#/${routeName}`; }
+  });
   if (!canAccess(currentUser.role, route)) {
-    mainEl.innerHTML = `
+    pageMain.innerHTML = `
       <div class="portal-card">
         <h1>You don’t have access to this page</h1>
         <p class="muted">Your account cannot open this screen. You have been sent back to the dashboard.</p>
@@ -627,11 +661,13 @@ async function renderRoute() {
   renderNav();
   try {
     await (views[route] || viewDashboard)();
+    if (gen !== routeGen) return;
     labelTableCells();
     await refreshDemoBar();
   } catch (err) {
-    mainEl.innerHTML = `<div class="portal-card"><h1>Could not load this page</h1><p class="muted">${escapeHtml(err.message || "Please try again.")}</p><p><button class="btn btn-solid" type="button" data-retry>Try again</button></p></div>`;
-    mainEl.querySelector("[data-retry]")?.addEventListener("click", () => renderRoute());
+    if (gen !== routeGen) return;
+    pageMain.innerHTML = `<div class="portal-card"><h1>Could not load this page</h1><p class="muted">${escapeHtml(err.message || "Please try again.")}</p><p><button class="btn btn-solid" type="button" data-retry>Try again</button></p></div>`;
+    pageMain.querySelector("[data-retry]")?.addEventListener("click", () => renderRoute());
   }
 }
 
@@ -690,7 +726,7 @@ async function viewEvents() {
     </tr>
   `).join("");
   const tab = (value, label) => `<button class="btn btn-ghost" type="button" data-action="filter-events" data-range="${value}" aria-pressed="${range === value ? "true" : "false"}">${label}</button>`;
-  mainEl.innerHTML = `
+  pageMain.innerHTML = `
     <div class="page-head"><div><p class="kicker">Operations</p><h1>Events</h1></div></div>
     <div class="filter-tabs" role="tablist" aria-label="Event range">
       ${tab("all", "All")}${tab("upcoming", "Upcoming")}${tab("past", "Past")}
@@ -711,7 +747,7 @@ async function viewEvents() {
       </table>
     </div>
   `;
-  mainEl.querySelector("[data-event-filters]").addEventListener("submit", (event) => {
+  pageMain.querySelector("[data-event-filters]").addEventListener("submit", (event) => {
     event.preventDefault();
     const dataForm = new FormData(event.target);
     const next = new URLSearchParams();
@@ -720,8 +756,8 @@ async function viewEvents() {
     if (dataForm.get("q")) next.set("q", dataForm.get("q"));
     window.location.hash = `#/events?${next.toString()}`;
   });
-  bindEventForm(mainEl.querySelector("[data-edit-event-form]"), editing);
-  bindEventForm(mainEl.querySelector("details [data-event-form]"));
+  bindEventForm(pageMain.querySelector("[data-edit-event-form]"), editing);
+  bindEventForm(pageMain.querySelector("details [data-event-form]"));
 }
 
 function eventForm(event) {
@@ -785,7 +821,10 @@ function bindEventForm(form, event) {
     }
     try {
       if (event) await api(`/api/events/${event.id}`, { method: "PATCH", body: payload });
-      else await api("/api/events", { method: "POST", body: payload });
+      else {
+        if (!(await confirmRealWrite())) return;
+        await api("/api/events", { method: "POST", body: payload });
+      }
       window.location.hash = "#/events";
       await viewEvents();
     } catch (err) {
@@ -821,7 +860,7 @@ async function viewRequests() {
       </article>
     `;
   }).join("") || `<p class="muted">No booking requests yet. They will appear here when someone uses the public calendar.</p>`;
-  mainEl.innerHTML = `
+  pageMain.innerHTML = `
     <div class="page-head"><div><p class="kicker">Inbox</p><h1>Booking requests</h1></div></div>
     <p class="muted">Approve to mark the date as booked and create an event. Decline frees the date again. Pending requests no longer lock the public calendar by themselves.</p>
     <div class="stack-list">${cards}</div>
@@ -861,7 +900,7 @@ async function viewSchedule() {
         <button class="btn btn-solid" type="submit">Save shift</button>
       </form>
     </details>`;
-  mainEl.innerHTML = `
+  pageMain.innerHTML = `
     <div class="page-head"><div><p class="kicker">Roster</p><h1>${currentUser.role === "staff" ? "Your schedule" : "Staff schedule"}</h1></div></div>
     ${addForm}
     <div class="table-wrap">
@@ -871,7 +910,7 @@ async function viewSchedule() {
       </table>
     </div>
   `;
-  const form = mainEl.querySelector("[data-add-shift]");
+  const form = pageMain.querySelector("[data-add-shift]");
   if (form) form.addEventListener("submit", async (event) => {
     event.preventDefault();
     const dataForm = new FormData(form);
@@ -919,7 +958,7 @@ async function viewTasks() {
         <button class="btn btn-solid" type="submit">Save task</button>
       </form>
     </details>`;
-  mainEl.innerHTML = `
+  pageMain.innerHTML = `
     <div class="page-head"><div><p class="kicker">To do</p><h1>${currentUser.role === "staff" ? "Your tasks" : "Tasks"}</h1></div></div>
     ${addForm}
     <div class="table-wrap">
@@ -929,7 +968,7 @@ async function viewTasks() {
       </table>
     </div>
   `;
-  const form = mainEl.querySelector("[data-add-task]");
+  const form = pageMain.querySelector("[data-add-task]");
   if (form) form.addEventListener("submit", async (event) => {
     event.preventDefault();
     const dataForm = new FormData(form);
@@ -976,7 +1015,7 @@ async function viewAttendance() {
         ${staffChoices().map((item) => `<option value="${esc(item.id)}" ${staff === item.id ? "selected" : ""}>${esc(item.name)}</option>`).join("")}
       </select>
     </div>`;
-  mainEl.innerHTML = `
+  pageMain.innerHTML = `
     <div class="page-head"><div><p class="kicker">Time log</p><h1>${currentUser.role === "staff" ? "Your attendance" : "Attendance"}</h1></div></div>
     ${clockCard(myPunch)}
     <form class="toolbar" data-att-filters>
@@ -993,7 +1032,7 @@ async function viewAttendance() {
       </table>
     </div>
   `;
-  mainEl.querySelector("[data-att-filters]").addEventListener("submit", (event) => {
+  pageMain.querySelector("[data-att-filters]").addEventListener("submit", (event) => {
     event.preventDefault();
     const dataForm = new FormData(event.target);
     const next = new URLSearchParams();
@@ -1020,7 +1059,7 @@ async function viewFinances() {
   const sampleTotals = data.sampleTotals || { fees: 0, collected: 0, deposits: 0, balance: 0 };
   const collected = totals.collected ?? totals.deposits;
   const sampleCollected = sampleTotals.collected ?? sampleTotals.deposits;
-  mainEl.innerHTML = `
+  pageMain.innerHTML = `
     <div class="page-head"><div><p class="kicker">Owner only</p><h1>Event revenue and balances</h1></div></div>
     <p class="muted">Balance is the contract total minus payments received.${data.demoMode ? " Demo mode is on, so SAMPLE events are included in the totals and marked SAMPLE in the list." : hasSample ? " Totals below are for real events only. Sample events are totaled separately." : ""}</p>
     <div class="card-grid cols-3">
@@ -1068,7 +1107,7 @@ async function viewReports() {
       <td><span class="chip">${esc(event.status || "")}</span></td>
     </tr>
   `).join("");
-  mainEl.innerHTML = `
+  pageMain.innerHTML = `
     <div class="page-head"><div><p class="kicker">Exports</p><h1>Reports</h1></div></div>
     <p class="muted">${hasSample
       ? "Sample rows are included in downloads and marked SAMPLE, so you can see the demo. A Sample column is added to the file. They come out of the files once sample data is removed."
@@ -1113,12 +1152,12 @@ async function viewAnnouncements() {
       </form>
     </details>
   `;
-  mainEl.innerHTML = `
+  pageMain.innerHTML = `
     <div class="page-head"><div><p class="kicker">Notice board</p><h1>Announcements</h1></div></div>
     ${compose}
     <div class="stack-list stack-gap">${items}</div>
   `;
-  const form = mainEl.querySelector("[data-add-announcement]");
+  const form = pageMain.querySelector("[data-add-announcement]");
   if (form) {
     form.addEventListener("submit", async (event) => {
       event.preventDefault();
@@ -1151,7 +1190,7 @@ async function viewUsers() {
       </td>
     </tr>
   `).join("");
-  mainEl.innerHTML = `
+  pageMain.innerHTML = `
     <div class="page-head"><div><p class="kicker">Owner only</p><h1>Users</h1></div></div>
     <p class="muted">Add a staff or admin account and share the password with them yourself. They will be asked to change it after they sign in. There is no email invite yet.</p>
     <p class="row-actions"><button class="btn btn-ghost" type="button" data-action="logout-all">Sign out everywhere</button></p>
@@ -1178,7 +1217,7 @@ async function viewUsers() {
       </table>
     </div>
   `;
-  const form = mainEl.querySelector("[data-add-user]");
+  const form = pageMain.querySelector("[data-add-user]");
   form.addEventListener("submit", async (event) => {
     event.preventDefault();
     const dataForm = new FormData(form);
@@ -1247,6 +1286,7 @@ mainEl.addEventListener("click", async (event) => {
         );
         if (!ok) return;
       }
+      if (body.decision === "approved" && !(await confirmRealWrite())) return;
       markBusy();
       await api(`/api/requests/${button.dataset.id}/decide`, { method: "POST", body });
       await refreshPending();
@@ -1302,7 +1342,7 @@ mainEl.addEventListener("click", async (event) => {
       return;
     }
     if (action === "download-report") {
-      const errEl = mainEl.querySelector("[data-report-error]");
+      const errEl = pageMain.querySelector("[data-report-error]");
       try {
         if (errEl) { errEl.hidden = true; errEl.textContent = ""; }
         await downloadReport(button.dataset.table, button.dataset.format);
