@@ -1,4 +1,4 @@
-import { api, escapeHtml, formatDate, formatMoney, todayISO } from "./api.js";
+import { api, clearToken, escapeHtml, formatDate, formatMoney, getToken, setToken, todayISO } from "./api.js";
 
 const loginScreen = document.querySelector("#login-screen");
 const appScreen = document.querySelector("#app-screen");
@@ -180,6 +180,7 @@ function renderSetup() {
           password: String(data.get("password") || "")
         }
       });
+      setToken(result.token, result.expiresAt);
       currentUser = result.user;
       go("dashboard");
       await bootApp();
@@ -218,6 +219,7 @@ function renderLogin(message = "") {
         method: "POST",
         body: { email: data.get("email"), password: data.get("password") }
       });
+      setToken(result.token, result.expiresAt);
       currentUser = result.user;
       go("dashboard");
       await bootApp();
@@ -232,13 +234,22 @@ async function boot() {
     renderSetup();
     return;
   }
+  if (!getToken()) {
+    currentUser = null;
+    renderLogin();
+    return;
+  }
   try {
     const data = await api("/api/auth/me");
     currentUser = data.user;
     await bootApp();
-  } catch {
+  } catch (err) {
     currentUser = null;
-    renderLogin();
+    clearToken();
+    const message = err.code === "session_expired" || err.status === 401
+      ? "Your session has ended. Please sign in again."
+      : (err.message || "Please sign in.");
+    renderLogin(message);
   }
 }
 
@@ -336,7 +347,10 @@ async function renderRoute() {
   } catch (err) {
     if (err.status === 401) {
       currentUser = null;
-      renderLogin("Your session has ended. Please sign in again.");
+      clearToken();
+      renderLogin(err.code === "session_expired"
+        ? "Your session has ended. Please sign in again."
+        : "Please sign in.");
       return;
     }
     mainEl.innerHTML = `<div class="portal-card"><p class="form-error">${escapeHtml(err.message)}</p></div>`;
@@ -790,6 +804,7 @@ mainEl.addEventListener("change", async (event) => {
 
 document.querySelector("[data-logout]").addEventListener("click", async () => {
   try { await api("/api/auth/logout", { method: "POST", body: {} }); } catch { /* ignore */ }
+  clearToken();
   currentUser = null;
   window.location.hash = "";
   renderLogin();

@@ -1,16 +1,52 @@
 export const API_BASE = "https://migranja-portal.migranja-events.workers.dev";
 
+const TOKEN_KEY = "mg_portal_session";
+
+export function getToken() {
+  try {
+    const raw = localStorage.getItem(TOKEN_KEY);
+    if (!raw) return "";
+    const data = JSON.parse(raw);
+    if (!data || !data.token) return "";
+    if (data.expiresAt && Date.parse(data.expiresAt) && Date.now() > Date.parse(data.expiresAt)) {
+      clearToken();
+      return "";
+    }
+    return data.token;
+  } catch {
+    return "";
+  }
+}
+
+export function setToken(token, expiresAt) {
+  if (!token) {
+    clearToken();
+    return;
+  }
+  localStorage.setItem(TOKEN_KEY, JSON.stringify({ token, expiresAt: expiresAt || null }));
+}
+
+export function clearToken() {
+  localStorage.removeItem(TOKEN_KEY);
+}
+
 export async function api(path, { method = "GET", body } = {}) {
+  const headers = {};
+  if (body) headers["Content-Type"] = "application/json";
+  const token = getToken();
+  if (token) headers.Authorization = `Bearer ${token}`;
   const response = await fetch(`${API_BASE}${path}`, {
     method,
-    credentials: "include",
-    headers: body ? { "Content-Type": "application/json" } : undefined,
+    headers,
     body: body ? JSON.stringify(body) : undefined
   });
   const data = await response.json().catch(() => ({}));
   if (!response.ok) {
+    const expired = data.code === "session_expired" || (response.status === 401 && Boolean(token) && path !== "/api/auth/login");
+    if (expired) clearToken();
     const error = new Error(data.error || "Request failed");
     error.status = response.status;
+    error.code = data.code || (expired ? "session_expired" : "");
     error.data = data;
     throw error;
   }
