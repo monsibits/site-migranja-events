@@ -1,4 +1,6 @@
-import { api, clearToken, escapeHtml, formatDate, formatMoney, getToken, setToken, todayISO } from "./api.js";
+import { api, clearToken, downloadReport, escapeHtml, formatDate, formatDateTime, formatMoney, getToken, isValidContact, setToken, todayISO, TURNSTILE_SITE_KEY } from "./api.js";
+
+const esc = escapeHtml;
 
 const loginScreen = document.querySelector("#login-screen");
 const appScreen = document.querySelector("#app-screen");
@@ -16,6 +18,7 @@ const ROUTES = {
   attendance: ["owner", "admin", "staff"],
   announcements: ["owner", "admin", "staff"],
   finances: ["owner"],
+  reports: ["owner", "admin"],
   users: ["owner"]
 };
 
@@ -37,9 +40,43 @@ function navItems(role) {
     { route: "attendance", label: "Attendance" },
     { route: "announcements", label: "Announcements" },
     { route: "finances", label: "Finances" },
+    { route: "reports", label: "Reports" },
     { route: "users", label: "Users" }
   ].filter((item) => canAccess(role, item.route));
 }
+
+const PAGE_TITLES = {
+  dashboard: "Dashboard",
+  events: "Events",
+  requests: "Booking requests",
+  schedule: "Schedule",
+  tasks: "Tasks",
+  attendance: "Attendance",
+  announcements: "Announcements",
+  finances: "Finances",
+  reports: "Reports",
+  users: "Users"
+};
+
+function setPageTitle(route) {
+  const label = PAGE_TITLES[route] || "Staff portal";
+  document.title = `${label} | Mi Granja Events`;
+}
+
+function normalizeHash() {
+  const raw = window.location.hash || "";
+  if (raw.startsWith("#setup") && !raw.startsWith("#/setup")) {
+    history.replaceState(null, "", `#/${raw.slice(1)}`);
+    return;
+  }
+  if (raw && raw.startsWith("#") && !raw.startsWith("#/")) {
+    history.replaceState(null, "", `#/${raw.slice(1)}`);
+  }
+  if (!window.location.hash && currentUser) {
+    history.replaceState(null, "", "#/dashboard");
+  }
+}
+
 
 function roleLabel(role) {
   if (role === "owner") return "Owner";
@@ -48,6 +85,7 @@ function roleLabel(role) {
 }
 
 function currentRoute() {
+  normalizeHash();
   const hash = (window.location.hash || "#/dashboard").replace(/^#\/?/, "");
   return hash.split("?")[0] || "dashboard";
 }
@@ -103,13 +141,15 @@ async function refreshPending() {
 }
 
 async function loadUsers() {
-  if (!currentUser || currentUser.role === "staff") {
+  if (!currentUser) {
     usersCache = [];
     return;
   }
-  if (currentUser.role === "owner") {
-    const data = await api("/api/users");
-    usersCache = data.users || [];
+  try {
+    const data = await api("/api/directory");
+    usersCache = data.people || [];
+  } catch {
+    usersCache = [];
   }
 }
 
@@ -118,13 +158,28 @@ function userName(id) {
   return found ? found.name : "";
 }
 
+function personName(row) {
+  return (row && (row.staff_name || userName(row.staff_id))) || "";
+}
+
+function loadingMarkup(label = "Loading…") {
+  return `<div class="portal-card loading-block" data-loading><span class="spinner" aria-hidden="true"></span><p class="muted">${esc(label)}</p></div>`;
+}
+
+function retryMarkup(message) {
+  return `<div class="portal-card retry-block"><p class="form-error">${esc(message || "Can't reach the server right now.")}</p><button class="btn btn-solid" type="button" data-retry-route>Try again</button></div>`;
+}
+
+
 
 function isSample(row) {
   return Boolean(row && (row.is_sample === 1 || row.is_sample === true || row.isSample));
 }
 
-function sampleMark(row) {
-  return isSample(row) ? ' <span class="chip chip-sample">SAMPLE</span>' : "";
+function sampleMark(row, visible = "") {
+  if (!isSample(row)) return "";
+  if (String(visible).toUpperCase().includes("SAMPLE")) return "";
+  return ' <span class="chip chip-sample">SAMPLE</span>';
 }
 
 async function attachSampleBanner() {
@@ -222,7 +277,38 @@ function renderSetup() {
   });
 }
 
-function renderLogin(message = "") {
+let loginTurnstile = null;
+
+function ensureTurnstileScript() {
+  if (document.getElementById("cf-turnstile-api")) return;
+  const script = document.createElement("script");
+  script.id = "cf-turnstile-api";
+  script.src = "https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit";
+  script.async = true;
+  document.head.append(script);
+}
+
+function mountLoginTurnstile() {
+  const host = loginScreen.querySelector("[data-login-turnstile]");
+  if (!host) return;
+  const start = () => {
+    if (!window.turnstile) return;
+    if (loginTurnstile !== null) {
+      try { window.turnstile.remove(loginTurnstile); } catch { /* ignore */ }
+      loginTurnstile = null;
+    }
+    loginTurnstile = window.turnstile.render(host, { sitekey: TURNSTILE_SITE_KEY });
+  };
+  ensureTurnstileScript();
+  if (window.turnstile) start();
+  else {
+    const timer = window.setInterval(() => { if (window.turnstile) { window.clearInterval(timer); start(); } }, 200);
+    window.setTimeout(() => window.clearInterval(timer), 8000);
+  }
+}
+
+function renderLogin(message = "", { turnstile = false } = {}) {
+  document.title = "Staff sign in | Mi Granja Events";
   loginScreen.hidden = false;
   appScreen.hidden = true;
   loginScreen.querySelector("[data-login-panel]").innerHTML = `
@@ -238,25 +324,48 @@ function renderLogin(message = "") {
         <label for="password">Password</label>
         <input id="password" name="password" type="password" autocomplete="current-password" required>
       </div>
-      <div data-form-error>${message ? `<p class="form-error">${escapeHtml(message)}</p>` : ""}</div>
+      <div class="field" data-login-turnstile-wrap ${turnstile ? "" : "hidden"}>
+        <div data-login-turnstile></div>
+      </div>
+      <div data-form-error>${message ? `<p class="form-error">${esc(message)}</p>` : ""}</div>
       <button class="btn btn-solid" type="submit">Sign in</button>
     </form>
   `;
+  if (turnstile) mountLoginTurnstile();
   const form = loginScreen.querySelector("[data-login-form]");
   form.addEventListener("submit", async (event) => {
     event.preventDefault();
     const data = new FormData(form);
+    const button = form.querySelector("button[type=submit]");
+    button.disabled = true;
+    button.textContent = "Signing in…";
     try {
+      const turnstileToken = window.turnstile && loginTurnstile !== null
+        ? window.turnstile.getResponse(loginTurnstile)
+        : "";
       const result = await api("/api/auth/login", {
         method: "POST",
-        body: { email: data.get("email"), password: data.get("password") }
+        body: {
+          email: data.get("email"),
+          password: data.get("password"),
+          turnstileToken
+        }
       });
       setToken(result.token, result.expiresAt);
       currentUser = result.user;
       go("dashboard");
       await bootApp();
     } catch (err) {
+      const need = err.code === "turnstile_required";
       showError(form.querySelector("[data-form-error]"), err.message);
+      button.disabled = false;
+      button.textContent = "Sign in";
+      if (need) {
+        form.querySelector("[data-login-turnstile-wrap]").hidden = false;
+        mountLoginTurnstile();
+      } else if (window.turnstile && loginTurnstile !== null) {
+        window.turnstile.reset(loginTurnstile);
+      }
     }
   });
 }
@@ -320,10 +429,11 @@ function renderChangePassword() {
       return;
     }
     try {
-      await api("/api/auth/password", {
+      const result = await api("/api/auth/password", {
         method: "POST",
         body: { current: data.get("current"), next: data.get("next") }
       });
+      if (result.token) setToken(result.token, result.expiresAt);
       currentUser.mustChangePassword = false;
       await bootApp();
     } catch (err) {
@@ -339,6 +449,8 @@ async function bootApp() {
   }
   loginScreen.hidden = true;
   appScreen.hidden = false;
+  const loginPanel = loginScreen.querySelector("[data-login-panel]");
+  if (loginPanel) loginPanel.innerHTML = "";
   setNavOpen(isWide());
   try {
     await Promise.all([refreshPending(), loadUsers().catch(() => { usersCache = []; })]);
@@ -351,7 +463,12 @@ async function bootApp() {
 
 async function renderRoute() {
   const route = currentRoute();
+  setPageTitle(route);
   if (route === "setup") return;
+  if (!currentUser) {
+    renderLogin();
+    return;
+  }
   if (!canAccess(currentUser.role, route)) {
     mainEl.innerHTML = `
       <div class="portal-card">
@@ -372,21 +489,28 @@ async function renderRoute() {
     attendance: viewAttendance,
     announcements: viewAnnouncements,
     finances: viewFinances,
+    reports: viewReports,
     users: viewUsers
   };
+  mainEl.innerHTML = loadingMarkup();
   try {
     await (views[route] || viewDashboard)();
     await attachSampleBanner();
   } catch (err) {
+    if (err.code === "password_change_required") {
+      renderChangePassword();
+      return;
+    }
     if (err.status === 401) {
       currentUser = null;
       clearToken();
       renderLogin(err.code === "session_expired"
         ? "Your session has ended. Please sign in again."
-        : "Please sign in.");
+        : "Please sign in.", { turnstile: err.code === "turnstile_required" });
       return;
     }
-    mainEl.innerHTML = `<div class="portal-card"><p class="form-error">${escapeHtml(err.message)}</p></div>`;
+    mainEl.innerHTML = retryMarkup(err.message);
+    mainEl.querySelector("[data-retry-route]")?.addEventListener("click", () => renderRoute());
   }
   renderNav();
 }
@@ -454,7 +578,7 @@ async function viewDashboard() {
       <section>
         <h2>Upcoming shifts</h2>
         ${shifts.length ? `<ul class="stack-list">${shifts.map((shift) => {
-          const who = currentUser.role === "staff" ? shift.role : `${userName(shift.staff_id) || ""} · ${shift.role || ""}`;
+          const who = currentUser.role === "staff" ? (shift.role || shift.event_title || "") : `${personName(shift)} · ${shift.role || ""}${shift.event_title ? ` · ${shift.event_title}` : ""}`;
           return `<li class="portal-card"><strong>${formatDate(shift.date, { month: "short" })}</strong><p class="muted">${escapeHtml(who)} · ${escapeHtml(shift.start)}–${escapeHtml(shift.end)}</p></li>`;
         }).join("")}</ul>` : `<p class="muted">No upcoming shifts yet.</p>`}
       </section>
@@ -467,81 +591,112 @@ async function viewDashboard() {
 }
 
 async function viewEvents() {
-  const data = await api("/api/events");
-  const rows = (data.events || []).map((event) => `
+  const params = new URLSearchParams(window.location.hash.split("?")[1] || "");
+  const range = params.get("range") || "all";
+  const status = params.get("status") || "";
+  const q = params.get("q") || "";
+  const query = new URLSearchParams();
+  if (range !== "all") query.set("range", range);
+  if (status) query.set("status", status);
+  if (q) query.set("q", q);
+  const data = await api(`/api/events?${query.toString()}`);
+  const events = data.events || [];
+  const editId = params.get("edit");
+  const editing = events.find((item) => item.id === editId);
+  const rows = events.map((event) => `
     <tr>
-      <td>${formatDate(event.date, { month: "short", weekday: "short" })}</td>
-      <td>${escapeHtml(event.client || "—")}${sampleMark(event)}<br><span class="muted">${escapeHtml(event.title || "")}</span></td>
-      <td>${escapeHtml(event.package || "—")}</td>
-      <td>${event.pax || "—"}</td>
-      <td>${escapeHtml(event.venue || "—")}</td>
-      <td><span class="chip chip-${escapeHtml(String(event.status || "").toLowerCase())}">${escapeHtml(event.status || "")}</span></td>
+      <td>${esc(formatDate(event.date, { month: "short", weekday: "short" }))}</td>
+      <td>${esc(event.client || "—")}${sampleMark(event, event.client)}<br><span class="muted">${esc(event.title || "")}</span></td>
+      <td>${esc(event.package || "—")}</td>
+      <td>${esc(event.pax ?? "—")}</td>
+      <td>${esc(event.venue || "—")}</td>
+      <td><span class="chip chip-${esc(String(event.status || "").toLowerCase())}">${esc(event.status || "")}</span></td>
+      <td class="row-actions">
+        <button class="btn btn-ghost" type="button" data-action="edit-event" data-id="${esc(event.id)}">View / Edit</button>
+        ${event.status !== "Cancelled" && event.status !== "Completed" ? `<button class="btn btn-danger" type="button" data-action="cancel-event" data-id="${esc(event.id)}">Cancel</button>` : ""}
+      </td>
     </tr>
   `).join("");
+  const tab = (value, label) => `<button class="btn btn-ghost" type="button" data-action="filter-events" data-range="${value}" aria-pressed="${range === value ? "true" : "false"}">${label}</button>`;
   mainEl.innerHTML = `
-    <div class="page-head">
-      <div>
-        <p class="kicker">Operations</p>
-        <h1>Events</h1>
-      </div>
+    <div class="page-head"><div><p class="kicker">Operations</p><h1>Events</h1></div></div>
+    <div class="filter-tabs" role="tablist" aria-label="Event range">
+      ${tab("all", "All")}${tab("upcoming", "Upcoming")}${tab("past", "Past")}
     </div>
-    <details class="portal-card">
-      <summary>Add an event</summary>
-      <form class="portal-form stack-gap" data-add-event>
-        <div class="field"><label for="ev-date">Date</label><input id="ev-date" name="date" type="date" required></div>
-        <div class="field"><label for="ev-client">Client</label><input id="ev-client" name="client" type="text" required></div>
-        <div class="field"><label for="ev-title">Title</label><input id="ev-title" name="title" type="text" required></div>
-        <div class="field"><label for="ev-type">Type</label>
-          <select id="ev-type" name="type">
-            <option>Wedding</option><option>Debut</option><option>Birthday</option>
-            <option>Christening</option><option>Corporate</option><option>Other</option>
-          </select>
-        </div>
-        <div class="field"><label for="ev-package">Package</label><input id="ev-package" name="package" type="text"></div>
-        <div class="field"><label for="ev-pax">Pax</label><input id="ev-pax" name="pax" type="number" min="1" max="500"></div>
-        <div class="field"><label for="ev-venue">Venue</label>
-          <select id="ev-venue" name="venue">
-            <option>Ballroom</option><option>The Nook</option><option>Amore Garden</option>
-          </select>
-        </div>
-        <div class="field"><label for="ev-status">Status</label>
-          <select id="ev-status" name="status">
-            <option>Confirmed</option><option>Tentative</option><option>Setup</option>
-          </select>
-        </div>
-        <div class="field"><label for="ev-fee">Fee (optional)</label><input id="ev-fee" name="fee" type="number" min="0"></div>
-        <div class="field"><label for="ev-deposit">Deposit (optional)</label><input id="ev-deposit" name="deposit" type="number" min="0"></div>
-        <div data-form-error></div>
-        <button class="btn btn-solid" type="submit">Save event</button>
-      </form>
-    </details>
+    <form class="toolbar" data-event-filters>
+      <div class="field"><label for="ev-status-filter">Status</label>
+        <select id="ev-status-filter" name="status"><option value="">Any</option>${["Confirmed","Tentative","Setup","Booked","Completed","Cancelled"].map((item) => `<option value="${item}" ${status === item ? "selected" : ""}>${item}</option>`).join("")}</select>
+      </div>
+      <div class="field"><label for="ev-search">Search</label><input id="ev-search" name="q" type="search" value="${esc(q)}" placeholder="Client, title, or venue"></div>
+      <button class="btn btn-solid" type="submit">Filter</button>
+    </form>
+    ${editing ? eventForm(editing) : ""}
+    <details class="portal-card"><summary>Add an event</summary>${eventForm()}</details>
     <div class="table-wrap stack-gap">
       <table class="data">
-        <thead><tr><th>Date</th><th>Client</th><th>Package</th><th>Pax</th><th>Venue</th><th>Status</th></tr></thead>
-        <tbody>${rows || `<tr><td colspan="6">No events yet. Add one, or approve a booking request.</td></tr>`}</tbody>
+        <thead><tr><th>Date</th><th>Client</th><th>Package</th><th>Pax</th><th>Venue</th><th>Status</th><th>Actions</th></tr></thead>
+        <tbody>${rows || `<tr><td colspan="7">No events yet. Add one, or approve a booking request.</td></tr>`}</tbody>
       </table>
     </div>
   `;
-  const form = mainEl.querySelector("[data-add-event]");
-  form.addEventListener("submit", async (event) => {
+  mainEl.querySelector("[data-event-filters]").addEventListener("submit", (event) => {
     event.preventDefault();
+    const dataForm = new FormData(event.target);
+    const next = new URLSearchParams();
+    next.set("range", range);
+    if (dataForm.get("status")) next.set("status", dataForm.get("status"));
+    if (dataForm.get("q")) next.set("q", dataForm.get("q"));
+    window.location.hash = `#/events?${next.toString()}`;
+  });
+  bindEventForm(mainEl.querySelector("[data-edit-event-form]"), editing);
+  bindEventForm(mainEl.querySelector("details [data-event-form]"));
+}
+
+function eventForm(event) {
+  const ev = event || {};
+  const sid = ev.id || "new";
+  const types = ["Wedding","Debut","Birthday","Christening","Corporate","Other"];
+  const venues = ["Ballroom","The Nook","Amore Garden","Any"];
+  const statuses = ["Confirmed","Tentative","Setup","Booked","Completed","Cancelled"];
+  const opts = (list, value) => list.map((item) => `<option ${value === item ? "selected" : ""}>${item}</option>`).join("");
+  return `
+    <form class="portal-form stack-gap ${event ? "drawer" : ""}" ${event ? "data-edit-event-form" : "data-event-form"} data-id="${esc(ev.id || "")}">
+      ${event ? "<h2>View or edit event</h2>" : ""}
+      <div class="field"><label for="ev-date-${esc(sid)}">Date <span class="req">required</span></label><input id="ev-date-${esc(sid)}" name="date" type="date" required value="${esc(ev.date || "")}"></div>
+      <div class="field"><label for="ev-client-${esc(sid)}">Client <span class="req">required</span></label><input id="ev-client-${esc(sid)}" name="client" required value="${esc(ev.client || "")}"></div>
+      <div class="field"><label for="ev-title-${esc(sid)}">Title <span class="req">required</span></label><input id="ev-title-${esc(sid)}" name="title" required value="${esc(ev.title || "")}"></div>
+      <div class="field"><label for="ev-type-${esc(sid)}">Type</label><select id="ev-type-${esc(sid)}" name="type">${opts(types, ev.type)}</select></div>
+      <div class="field"><label for="ev-package-${esc(sid)}">Package</label><input id="ev-package-${esc(sid)}" name="package" value="${esc(ev.package || "")}"></div>
+      <div class="field"><label for="ev-pax-${esc(sid)}">Pax</label><input id="ev-pax-${esc(sid)}" name="pax" type="number" min="0" max="2000" value="${esc(ev.pax ?? "")}"></div>
+      <div class="field"><label for="ev-venue-${esc(sid)}">Venue</label><select id="ev-venue-${esc(sid)}" name="venue">${opts(venues, ev.venue)}</select></div>
+      <div class="field"><label for="ev-status-${esc(sid)}">Status</label><select id="ev-status-${esc(sid)}" name="status">${opts(statuses, ev.status)}</select></div>
+      ${currentUser.role === "owner" ? `<div class="field"><label for="ev-fee-${esc(sid)}">Fee</label><input id="ev-fee-${esc(sid)}" name="fee" type="number" min="0" value="${esc(ev.fee ?? "")}"></div>
+        <div class="field"><label for="ev-deposit-${esc(sid)}">Deposit</label><input id="ev-deposit-${esc(sid)}" name="deposit" type="number" min="0" value="${esc(ev.deposit ?? "")}"></div>` : ""}
+      <div data-form-error></div>
+      <button class="btn btn-solid" type="submit">${event ? "Save changes" : "Save event"}</button>
+    </form>
+  `;
+}
+
+function bindEventForm(form, event) {
+  if (!form) return;
+  form.addEventListener("submit", async (submitEvent) => {
+    submitEvent.preventDefault();
     const dataForm = new FormData(form);
+    const payload = {
+      date: dataForm.get("date"), client: dataForm.get("client"), title: dataForm.get("title"),
+      type: dataForm.get("type"), package: dataForm.get("package"),
+      pax: dataForm.get("pax") === "" ? null : Number(dataForm.get("pax")),
+      venue: dataForm.get("venue"), status: dataForm.get("status")
+    };
+    if (currentUser.role === "owner") {
+      payload.fee = dataForm.get("fee") === "" ? null : Number(dataForm.get("fee"));
+      payload.deposit = dataForm.get("deposit") === "" ? null : Number(dataForm.get("deposit"));
+    }
     try {
-      await api("/api/events", {
-        method: "POST",
-        body: {
-          date: dataForm.get("date"),
-          client: dataForm.get("client"),
-          title: dataForm.get("title"),
-          type: dataForm.get("type"),
-          package: dataForm.get("package"),
-          pax: Number(dataForm.get("pax")) || 0,
-          venue: dataForm.get("venue"),
-          status: dataForm.get("status"),
-          fee: dataForm.get("fee") === "" ? null : Number(dataForm.get("fee")),
-          deposit: dataForm.get("deposit") === "" ? null : Number(dataForm.get("deposit"))
-        }
-      });
+      if (event) await api(`/api/events/${event.id}`, { method: "PATCH", body: payload });
+      else await api("/api/events", { method: "POST", body: payload });
+      window.location.hash = "#/events";
       await viewEvents();
     } catch (err) {
       showError(form.querySelector("[data-form-error]"), err.message);
@@ -555,77 +710,128 @@ async function viewRequests() {
   const cards = (data.requests || []).map((req) => {
     const actions = req.status === "pending"
       ? `<div class="row-actions">
-           <button class="btn btn-solid" type="button" data-action="approve" data-id="${escapeHtml(req.id)}">Approve</button>
-           <button class="btn btn-danger" type="button" data-action="decline" data-id="${escapeHtml(req.id)}">Decline</button>
+           <button class="btn btn-solid" type="button" data-action="approve" data-id="${esc(req.id)}">Approve</button>
+           <button class="btn btn-danger" type="button" data-action="decline" data-id="${esc(req.id)}">Decline</button>
          </div>`
-      : "";
+      : (req.decline_reason ? `<p class="muted">Reason: ${esc(req.decline_reason)}</p>` : "");
     return `
       <article class="portal-card">
         <div class="page-head">
           <div>
-            <p class="kicker">${formatDate(req.date, { weekday: "long" })}</p>
-            <h2>${escapeHtml(req.name)}${sampleMark(req)}</h2>
+            <p class="kicker">${esc(formatDate(req.date, { weekday: "long" }))}</p>
+            <h2>${esc(req.name)}${sampleMark(req, req.name)}</h2>
           </div>
-          <span class="chip chip-${escapeHtml(req.status)}">${escapeHtml(req.status)}</span>
+          <span class="chip chip-${esc(req.status)}">${esc(req.status)}</span>
         </div>
-        <p>${escapeHtml(req.type || "")} · ${escapeHtml(String(req.pax || ""))} guests · ${escapeHtml(req.venue || "Any")}</p>
-        <p class="muted">${escapeHtml(req.contact)}</p>
-        ${req.notes ? `<p>${escapeHtml(req.notes)}</p>` : ""}
+        <p>${esc(req.type || "")}${req.package ? ` · ${esc(req.package)}` : ""} · ${esc(String(req.pax || ""))} guests · ${esc(req.venue || "Any")}</p>
+        <p class="muted">${esc(req.contact)}</p>
+        <p class="tiny muted">Submitted ${esc(formatDateTime(req.created_at) || "")}</p>
+        ${req.notes ? `<p>${esc(req.notes)}</p>` : ""}
         ${actions}
       </article>
     `;
   }).join("") || `<p class="muted">No booking requests yet. They will appear here when someone uses the public calendar.</p>`;
   mainEl.innerHTML = `
-    <div class="page-head">
-      <div>
-        <p class="kicker">Inbox</p>
-        <h1>Booking requests</h1>
-      </div>
-    </div>
-    <p class="muted">Approve to mark the date as booked and create an event. Decline frees the date again.</p>
+    <div class="page-head"><div><p class="kicker">Inbox</p><h1>Booking requests</h1></div></div>
+    <p class="muted">Approve to mark the date as booked and create an event. Decline frees the date again. Pending requests no longer lock the public calendar by themselves.</p>
     <div class="stack-list">${cards}</div>
   `;
 }
 
 async function viewSchedule() {
   const data = await api("/api/shifts");
+  const events = canAccess(currentUser.role, "events") ? (await api("/api/events").catch(() => ({ events: [] }))).events || [] : [];
   const rows = (data.shifts || []).map((shift) => {
-    const who = currentUser.role === "staff" ? "" : `<td>${escapeHtml(userName(shift.staff_id) || "")}${sampleMark(shift)}</td>`;
+    const who = currentUser.role === "staff" ? "" : `<td>${esc(personName(shift))}${sampleMark(shift, personName(shift))}</td>`;
+    const eventLabel = shift.event_title ? `${shift.event_title}${shift.event_venue ? ` · ${shift.event_venue}` : ""}` : "—";
     return `<tr>
-      <td>${formatDate(shift.date, { month: "short", weekday: "short" })}</td>
+      <td>${esc(formatDate(shift.date, { month: "short", weekday: "short" }))}</td>
       ${who}
-      <td>${escapeHtml(shift.start)}–${escapeHtml(shift.end)}</td>
-      <td>${escapeHtml(shift.role || "")}</td>
+      <td>${esc(shift.start)}–${esc(shift.end)}</td>
+      <td>${esc(shift.role || "")}</td>
+      <td>${esc(eventLabel)}</td>
     </tr>`;
   }).join("");
   const whoHead = currentUser.role === "staff" ? "" : "<th>Staff</th>";
+  const addForm = currentUser.role === "staff" ? "" : `
+    <details class="portal-card">
+      <summary>Add a shift</summary>
+      <form class="portal-form stack-gap" data-add-shift>
+        <div class="field"><label for="sh-date">Date <span class="req">required</span></label><input id="sh-date" name="date" type="date" required></div>
+        <div class="field"><label for="sh-staff">Staff <span class="req">required</span></label>
+          <select id="sh-staff" name="staffId" required>${usersCache.map((item) => `<option value="${esc(item.id)}">${esc(item.name)}</option>`).join("")}</select>
+        </div>
+        <div class="field"><label for="sh-start">Start</label><input id="sh-start" name="start" type="time" required></div>
+        <div class="field"><label for="sh-end">End</label><input id="sh-end" name="end" type="time" required></div>
+        <div class="field"><label for="sh-role">Assignment</label><input id="sh-role" name="role" placeholder="Coordinator"></div>
+        <div class="field"><label for="sh-event">Event</label>
+          <select id="sh-event" name="eventId"><option value="">None</option>${events.map((item) => `<option value="${esc(item.id)}">${esc(item.date)} · ${esc(item.title || item.client)}</option>`).join("")}</select>
+        </div>
+        <div data-form-error></div>
+        <button class="btn btn-solid" type="submit">Save shift</button>
+      </form>
+    </details>`;
   mainEl.innerHTML = `
     <div class="page-head"><div><p class="kicker">Roster</p><h1>${currentUser.role === "staff" ? "Your schedule" : "Staff schedule"}</h1></div></div>
+    ${addForm}
     <div class="table-wrap">
       <table class="data">
-        <thead><tr><th>Date</th>${whoHead}<th>Time</th><th>Assignment</th></tr></thead>
-        <tbody>${rows || `<tr><td colspan="4">No shifts yet.</td></tr>`}</tbody>
+        <thead><tr><th>Date</th>${whoHead}<th>Time</th><th>Assignment</th><th>Event</th></tr></thead>
+        <tbody>${rows || `<tr><td colspan="5">No shifts yet.</td></tr>`}</tbody>
       </table>
     </div>
   `;
+  const form = mainEl.querySelector("[data-add-shift]");
+  if (form) form.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const dataForm = new FormData(form);
+    try {
+      await api("/api/shifts", { method: "POST", body: {
+        date: dataForm.get("date"), staffId: dataForm.get("staffId"),
+        start: dataForm.get("start"), end: dataForm.get("end"),
+        role: dataForm.get("role"), eventId: dataForm.get("eventId") || null
+      }});
+      await viewSchedule();
+    } catch (err) {
+      showError(form.querySelector("[data-form-error]"), err.message);
+    }
+  });
 }
 
 async function viewTasks() {
   const data = await api("/api/tasks");
+  const events = canAccess(currentUser.role, "events") ? (await api("/api/events").catch(() => ({ events: [] }))).events || [] : [];
   const rows = (data.tasks || []).map((task) => {
-    const who = currentUser.role === "staff" ? "" : `<td>${escapeHtml(userName(task.staff_id) || "")}</td>`;
+    const who = currentUser.role === "staff" ? "" : `<td>${esc(personName(task))}${sampleMark(task, personName(task))}</td>`;
     const done = task.status === "done";
     return `<tr>
-      <td>${task.due ? formatDate(task.due, { month: "short" }) : "—"}</td>
+      <td>${task.due ? esc(formatDate(task.due, { month: "short" })) : "—"}</td>
       ${who}
-      <td>${escapeHtml(task.title)}${sampleMark(task)}</td>
+      <td>${esc(task.title)}${sampleMark(task, task.title)}${task.event_title ? `<br><span class="muted">${esc(task.event_title)}</span>` : ""}</td>
       <td><span class="chip chip-${done ? "done" : "open"}">${done ? "Done" : "Open"}</span></td>
-      <td><button class="btn btn-ghost" type="button" data-action="toggle-task" data-id="${escapeHtml(task.id)}">${done ? "Reopen" : "Mark done"}</button></td>
+      <td><button class="btn btn-ghost" type="button" data-action="toggle-task" data-id="${esc(task.id)}">${done ? "Reopen" : "Mark done"}</button></td>
     </tr>`;
   }).join("");
   const whoHead = currentUser.role === "staff" ? "" : "<th>Staff</th>";
+  const addForm = currentUser.role === "staff" ? "" : `
+    <details class="portal-card">
+      <summary>Add a task</summary>
+      <form class="portal-form stack-gap" data-add-task>
+        <div class="field"><label for="tk-title">Task <span class="req">required</span></label><input id="tk-title" name="title" required></div>
+        <div class="field"><label for="tk-staff">Staff <span class="req">required</span></label>
+          <select id="tk-staff" name="staffId" required>${usersCache.map((item) => `<option value="${esc(item.id)}">${esc(item.name)}</option>`).join("")}</select>
+        </div>
+        <div class="field"><label for="tk-due">Due</label><input id="tk-due" name="due" type="date"></div>
+        <div class="field"><label for="tk-event">Event</label>
+          <select id="tk-event" name="eventId"><option value="">None</option>${events.map((item) => `<option value="${esc(item.id)}">${esc(item.date)} · ${esc(item.title || item.client)}</option>`).join("")}</select>
+        </div>
+        <div data-form-error></div>
+        <button class="btn btn-solid" type="submit">Save task</button>
+      </form>
+    </details>`;
   mainEl.innerHTML = `
     <div class="page-head"><div><p class="kicker">To do</p><h1>${currentUser.role === "staff" ? "Your tasks" : "Tasks"}</h1></div></div>
+    ${addForm}
     <div class="table-wrap">
       <table class="data">
         <thead><tr><th>Due</th>${whoHead}<th>Task</th><th>Status</th><th></th></tr></thead>
@@ -633,48 +839,152 @@ async function viewTasks() {
       </table>
     </div>
   `;
+  const form = mainEl.querySelector("[data-add-task]");
+  if (form) form.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const dataForm = new FormData(form);
+    try {
+      await api("/api/tasks", { method: "POST", body: {
+        title: dataForm.get("title"), staffId: dataForm.get("staffId"),
+        due: dataForm.get("due") || "", eventId: dataForm.get("eventId") || null
+      }});
+      await viewTasks();
+    } catch (err) {
+      showError(form.querySelector("[data-form-error]"), err.message);
+    }
+  });
 }
 
 async function viewAttendance() {
-  const data = await api("/api/attendance");
+  const params = new URLSearchParams(window.location.hash.split("?")[1] || "");
+  const from = params.get("from") || "";
+  const to = params.get("to") || "";
+  const staff = params.get("staff") || "";
+  const query = new URLSearchParams();
+  if (from) query.set("from", from);
+  if (to) query.set("to", to);
+  if (staff) query.set("staff", staff);
+  const data = await api(`/api/attendance?${query.toString()}`);
   const today = todayISO();
   const myPunch = (data.attendance || []).find((row) => row.staff_id === currentUser.id && row.date === today);
   const whoHead = currentUser.role === "staff" ? "" : "<th>Staff</th>";
+  const canCorrect = currentUser.role === "owner" || currentUser.role === "admin";
   const rows = (data.attendance || []).map((row) => `
     <tr>
-      <td>${formatDate(row.date, { month: "short", weekday: "short" })}</td>
-      ${currentUser.role === "staff" ? "" : `<td>${escapeHtml(userName(row.staff_id) || "")}${sampleMark(row)}</td>`}
-      <td>${escapeHtml(row.time_in || "—")}</td>
-      <td>${escapeHtml(row.time_out || "—")}</td>
+      <td>${esc(formatDate(row.date, { month: "short", weekday: "short" }))}</td>
+      ${currentUser.role === "staff" ? "" : `<td>${esc(personName(row))}${sampleMark(row, personName(row))}</td>`}
+      <td>${esc(row.time_in || "—")}</td>
+      <td>${esc(row.time_out || "—")}</td>
+      ${canCorrect ? `<td><button class="btn btn-ghost" type="button" data-action="correct-attendance" data-id="${esc(row.id)}" data-date="${esc(row.date || "")}" data-in="${esc(row.time_in || "")}" data-out="${esc(row.time_out || "")}">Correct</button></td>` : ""}
     </tr>
   `).join("");
+  const staffFilter = currentUser.role === "staff" ? "" : `
+    <div class="field">
+      <label for="att-staff">Staff</label>
+      <select id="att-staff" name="staff">
+        <option value="">Everyone</option>
+        ${usersCache.map((item) => `<option value="${esc(item.id)}" ${staff === item.id ? "selected" : ""}>${esc(item.name)}</option>`).join("")}
+      </select>
+    </div>`;
   mainEl.innerHTML = `
     <div class="page-head"><div><p class="kicker">Time log</p><h1>${currentUser.role === "staff" ? "Your attendance" : "Attendance"}</h1></div></div>
     ${clockCard(myPunch)}
+    <form class="toolbar" data-att-filters>
+      <div class="field"><label for="att-from">From</label><input id="att-from" name="from" type="date" value="${esc(from)}"></div>
+      <div class="field"><label for="att-to">To</label><input id="att-to" name="to" type="date" value="${esc(to)}"></div>
+      ${staffFilter}
+      <button class="btn btn-solid" type="submit">Filter</button>
+      ${currentUser.role !== "staff" ? `<button class="btn btn-ghost" type="button" data-action="export-attendance">Export CSV</button>` : ""}
+    </form>
     <div class="table-wrap stack-gap">
       <table class="data">
-        <thead><tr><th>Date</th>${whoHead}<th>Time in</th><th>Time out</th></tr></thead>
-        <tbody>${rows || `<tr><td colspan="4">No entries yet.</td></tr>`}</tbody>
+        <thead><tr><th>Date</th>${whoHead}<th>Time in</th><th>Time out</th>${canCorrect ? "<th></th>" : ""}</tr></thead>
+        <tbody>${rows || `<tr><td colspan="5">No entries yet.</td></tr>`}</tbody>
+      </table>
+    </div>
+  `;
+  mainEl.querySelector("[data-att-filters]").addEventListener("submit", (event) => {
+    event.preventDefault();
+    const dataForm = new FormData(event.target);
+    const next = new URLSearchParams();
+    if (dataForm.get("from")) next.set("from", dataForm.get("from"));
+    if (dataForm.get("to")) next.set("to", dataForm.get("to"));
+    if (dataForm.get("staff")) next.set("staff", dataForm.get("staff"));
+    window.location.hash = `#/attendance?${next.toString()}`;
+  });
+}
+
+async function viewFinances() {
+  const data = await api("/api/finances");
+  const hasSample = (data.events || []).some(isSample);
+  const rows = (data.events || []).map((event) => `
+    <tr>
+      <td>${esc(formatDate(event.date, { month: "short" }))}</td>
+      <td>${esc(event.client || "")} · ${esc(event.title || "")}${sampleMark(event, event.client)}</td>
+      <td>${formatMoney(event.fee)}</td>
+      <td>${formatMoney(event.deposit)}</td>
+      <td>${event.fee ? formatMoney((event.fee || 0) - (event.deposit || 0)) : "TBD"}</td>
+    </tr>
+  `).join("");
+  const totals = data.totals || { fees: 0, deposits: 0, balance: 0 };
+  const sampleTotals = data.sampleTotals || { fees: 0, deposits: 0, balance: 0 };
+  mainEl.innerHTML = `
+    <div class="page-head"><div><p class="kicker">Owner only</p><h1>Event revenue and deposits</h1></div></div>
+    <p class="muted">Totals below are for real events only. Sample events are listed and totaled separately.</p>
+    <div class="card-grid cols-3">
+      <article class="portal-card"><p class="kicker">Fees</p><p class="stat">${formatMoney(totals.fees)}</p></article>
+      <article class="portal-card"><p class="kicker">Deposits</p><p class="stat">${formatMoney(totals.deposits)}</p></article>
+      <article class="portal-card"><p class="kicker">Balance</p><p class="stat">${formatMoney(totals.balance)}</p></article>
+    </div>
+    ${hasSample ? `<p class="muted">Sample totals: ${formatMoney(sampleTotals.fees)} fees · ${formatMoney(sampleTotals.deposits)} deposits · ${formatMoney(sampleTotals.balance)} balance. These are not included in the cards above.</p>` : ""}
+    <div class="table-wrap stack-gap">
+      <table class="data">
+        <thead><tr><th>Date</th><th>Event</th><th>Fee</th><th>Deposit</th><th>Balance</th></tr></thead>
+        <tbody>${rows || `<tr><td colspan="5">No fee figures yet.</td></tr>`}</tbody>
       </table>
     </div>
   `;
 }
 
+async function viewReports() {
+  const tables = [
+    { id: "events", label: "Events" },
+    { id: "requests", label: "Booking requests" },
+    { id: "attendance", label: "Attendance" }
+  ];
+  if (currentUser.role === "owner") tables.push({ id: "finances", label: "Finances (real events only)" });
+  mainEl.innerHTML = `
+    <div class="page-head"><div><p class="kicker">Exports</p><h1>Reports</h1></div></div>
+    <p class="muted">Download a spreadsheet of current records. Sample rows are left out. For a live Google Sheet later, an Apps Script can pull the same files using a key stored in Script Properties, not in the sheet itself.</p>
+    <div class="stack-list">
+      ${tables.map((item) => `
+        <article class="portal-card row-actions">
+          <div><h2>${esc(item.label)}</h2></div>
+          <button class="btn btn-solid" type="button" data-action="download-report" data-table="${esc(item.id)}" data-format="csv">CSV</button>
+          <button class="btn btn-ghost" type="button" data-action="download-report" data-table="${esc(item.id)}" data-format="xlsx">Excel</button>
+        </article>
+      `).join("")}
+    </div>
+    <p class="form-error" data-report-error hidden></p>
+  `;
+}
+
+
 async function viewAnnouncements() {
   const data = await api("/api/announcements");
   const items = (data.announcements || []).map((item) => `
     <article class="portal-card">
-      <p class="kicker">${formatDate(item.date, { month: "short" })}</p>
-      <h2>${escapeHtml(item.title)}${sampleMark(item)}</h2>
-      <p>${escapeHtml(item.body)}</p>
+      <p class="kicker">${esc(formatDate(item.date, { month: "short" }))}</p>
+      <h2>${esc(item.title)}${sampleMark(item, item.title)}</h2>
+      <p>${esc(item.body)}</p>
     </article>
   `).join("") || `<p class="muted">No announcements yet.</p>`;
   const compose = currentUser.role === "staff" ? "" : `
     <details class="portal-card">
       <summary>New announcement</summary>
       <form class="portal-form stack-gap" data-add-announcement>
-        <div class="field"><label for="an-title">Title</label><input id="an-title" name="title" required></div>
-        <div class="field"><label for="an-body">Message</label><textarea id="an-body" name="body" required></textarea></div>
+        <div class="field"><label for="an-title">Title <span class="req">required</span></label><input id="an-title" name="title" required></div>
+        <div class="field"><label for="an-body">Message <span class="req">required</span></label><textarea id="an-body" name="body" required></textarea></div>
         <div data-form-error></div>
         <button class="btn btn-solid" type="submit">Post</button>
       </form>
@@ -700,36 +1010,6 @@ async function viewAnnouncements() {
   }
 }
 
-async function viewFinances() {
-  const data = await api("/api/finances");
-  const hasSample = (data.events || []).some(isSample);
-  const rows = (data.events || []).map((event) => `
-    <tr>
-      <td>${formatDate(event.date, { month: "short" })}</td>
-      <td>${escapeHtml(event.client || "")} · ${escapeHtml(event.title || "")}${sampleMark(event)}</td>
-      <td>${formatMoney(event.fee)}</td>
-      <td>${formatMoney(event.deposit)}</td>
-      <td>${event.fee ? formatMoney((event.fee || 0) - (event.deposit || 0)) : "TBD"}</td>
-    </tr>
-  `).join("");
-  const totals = data.totals || { fees: 0, deposits: 0, balance: 0 };
-  mainEl.innerHTML = `
-    <div class="page-head"><div><p class="kicker">Owner only</p><h1>Event revenue and deposits</h1></div></div>
-    ${hasSample ? `<p class="muted">These totals include SAMPLE events so you can see how this page looks. They are not real bookings.</p>` : ""}
-    <div class="card-grid cols-3">
-      <article class="portal-card"><p class="kicker">Fees</p><p class="stat">${formatMoney(totals.fees)}</p></article>
-      <article class="portal-card"><p class="kicker">Deposits</p><p class="stat">${formatMoney(totals.deposits)}</p></article>
-      <article class="portal-card"><p class="kicker">Balance</p><p class="stat">${formatMoney(totals.balance)}</p></article>
-    </div>
-    <div class="table-wrap stack-gap">
-      <table class="data">
-        <thead><tr><th>Date</th><th>Event</th><th>Fee</th><th>Deposit</th><th>Balance</th></tr></thead>
-        <tbody>${rows || `<tr><td colspan="5">No fee figures yet.</td></tr>`}</tbody>
-      </table>
-    </div>
-  `;
-}
-
 async function viewUsers() {
   await loadUsers();
   const rows = usersCache.map((item) => `
@@ -750,6 +1030,7 @@ async function viewUsers() {
   mainEl.innerHTML = `
     <div class="page-head"><div><p class="kicker">Owner only</p><h1>Users</h1></div></div>
     <p class="muted">Add a staff or admin account and share the password with them yourself. They will be asked to change it after they sign in. There is no email invite yet.</p>
+    <p class="row-actions"><button class="btn btn-ghost" type="button" data-action="logout-all">Sign out everywhere</button></p>
     <details class="portal-card">
       <summary>Add a user</summary>
       <form class="portal-form stack-gap" data-add-user>
@@ -815,19 +1096,91 @@ mainEl.addEventListener("click", async (event) => {
     }
     if (action === "approve" || action === "decline") {
       const ok = window.confirm(action === "approve"
-        ? "Approve this request? The date will become booked and an event will be added."
-        : "Decline this request? The date will become available again.");
+        ? "Approve this request? An event will be added, and the date will show as booked on the public calendar."
+        : "Decline this request?");
       if (!ok) return;
-      await api(`/api/requests/${button.dataset.id}/decide`, {
-        method: "POST",
-        body: { decision: action === "approve" ? "approved" : "declined" }
-      });
+      const body = { decision: action === "approve" ? "approved" : "declined" };
+      if (action === "decline") {
+        const reason = window.prompt("Please enter a reason for declining (at least 3 characters).");
+        if (reason === null) return;
+        if (reason.trim().length < 3) {
+          window.alert("Please enter a reason of at least 3 characters.");
+          return;
+        }
+        body.reason = reason.trim();
+      }
+      await api(`/api/requests/${button.dataset.id}/decide`, { method: "POST", body });
       await refreshPending();
       await renderRoute();
+      return;
+    }
+    if (action === "edit-event") {
+      const params = new URLSearchParams(window.location.hash.split("?")[1] || "");
+      params.set("edit", button.dataset.id);
+      window.location.hash = `#/events?${params.toString()}`;
+      return;
+    }
+    if (action === "cancel-event") {
+      const ok = window.confirm("Cancel this event? If no other event is holding the same date and venue, the date will become available again.");
+      if (!ok) return;
+      await api(`/api/events/${button.dataset.id}`, { method: "PATCH", body: { status: "Cancelled" } });
+      await renderRoute();
+      return;
+    }
+    if (action === "filter-events") {
+      const params = new URLSearchParams(window.location.hash.split("?")[1] || "");
+      params.set("range", button.dataset.range || "all");
+      params.delete("edit");
+      window.location.hash = `#/events?${params.toString()}`;
+      return;
     }
     if (action === "toggle-task") {
       await api(`/api/tasks/${button.dataset.id}`, { method: "PATCH", body: {} });
       await renderRoute();
+      return;
+    }
+    if (action === "correct-attendance") {
+      const timeIn = window.prompt("Time in (HH:MM, 24-hour).", button.dataset.in || "");
+      if (timeIn === null) return;
+      const timeOut = window.prompt("Time out (HH:MM, 24-hour). Leave blank if still open.", button.dataset.out || "");
+      if (timeOut === null) return;
+      const note = window.prompt("Reason for this correction (required).");
+      if (note === null) return;
+      if (note.trim().length < 3) {
+        window.alert("Please enter a reason of at least 3 characters.");
+        return;
+      }
+      await api(`/api/attendance/${button.dataset.id}`, {
+        method: "PATCH",
+        body: { time_in: timeIn.trim(), time_out: timeOut.trim(), note: note.trim() }
+      });
+      await renderRoute();
+      return;
+    }
+    if (action === "export-attendance") {
+      await downloadReport("attendance", "csv");
+      return;
+    }
+    if (action === "download-report") {
+      const errEl = mainEl.querySelector("[data-report-error]");
+      try {
+        if (errEl) { errEl.hidden = true; errEl.textContent = ""; }
+        await downloadReport(button.dataset.table, button.dataset.format);
+      } catch (err) {
+        if (errEl) { errEl.hidden = false; errEl.textContent = err.message; }
+        else window.alert(err.message);
+      }
+      return;
+    }
+    if (action === "logout-all") {
+      const ok = window.confirm("Sign out of this account on every device, including this one?");
+      if (!ok) return;
+      await api("/api/auth/logout-all", { method: "POST", body: {} });
+      clearToken();
+      currentUser = null;
+      window.location.hash = "";
+      renderLogin("You have been signed out everywhere. Please sign in again.");
+      return;
     }
   } catch (err) {
     window.alert(err.message);
@@ -852,6 +1205,16 @@ document.querySelector("[data-logout]").addEventListener("click", async () => {
   currentUser = null;
   window.location.hash = "";
   renderLogin();
+});
+
+document.querySelector("[data-logout-all]")?.addEventListener("click", async () => {
+  const ok = window.confirm("Sign out of this account on every device, including this one?");
+  if (!ok) return;
+  try { await api("/api/auth/logout-all", { method: "POST", body: {} }); } catch { /* still clear local session */ }
+  clearToken();
+  currentUser = null;
+  window.location.hash = "";
+  renderLogin("You have been signed out everywhere. Please sign in again.");
 });
 
 navToggle.addEventListener("click", () => setNavOpen(navEl.hidden));

@@ -76,9 +76,13 @@ export function renderCalendar(container, { year, month, days, selected, onSelec
     </div>
   `;
 
-  container.querySelectorAll("button[data-date]").forEach((button) => {
-    button.addEventListener("click", () => {
-      if (typeof onSelect === "function") onSelect(button.dataset.date);
+  if (!container.dataset.calBound) {
+    container.dataset.calBound = "1";
+    container.addEventListener("click", (event) => {
+      const button = event.target.closest("button[data-date]");
+      if (!button || button.disabled) return;
+      if (typeof container._onSelectDate === "function") container._onSelectDate(button.dataset.date);
     });
-  });
+  }
+  container._onSelectDate = onSelect;
 }
