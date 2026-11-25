@@ -1,0 +1,4 @@
+#!/bin/sh
+# Reject a push if any front-end JS module has a syntax or top-level import error.
+cd "$(dirname "$0")/../.." || exit 1
+exec node scripts/check-modules.mjs

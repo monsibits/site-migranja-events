@@ -695,7 +695,6 @@ function renderQuotes(panel, data) {
       }
     });
   });
-}
   panel.querySelectorAll("[data-edit-quote]").forEach((btn) => {
     btn.addEventListener("click", async () => {
       const row = rows.find((item) => item.id === btn.dataset.editQuote);
@@ -722,8 +721,7 @@ function renderQuotes(panel, data) {
       }
     });
   });
-
-
+}
 
 function renderContracts(panel, data) {
   const rows = data.contracts.contracts || [];
@@ -766,7 +764,6 @@ function renderContracts(panel, data) {
       if (row) printContract(row);
     });
   });
-}
   panel.querySelectorAll("[data-edit-contract]").forEach((btn) => {
     btn.addEventListener("click", async () => {
       const row = rows.find((item) => item.id === btn.dataset.editContract);
@@ -794,8 +791,7 @@ function renderContracts(panel, data) {
       }
     });
   });
-
-
+}
 
 function renderPayments(panel, data) {
   const rows = data.payments.payments || [];
