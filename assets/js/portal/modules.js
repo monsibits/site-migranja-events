@@ -288,8 +288,12 @@ function staffOptions(value, includeBlank = true) {
 
 async function eventOptions(value) {
   if (!ctx._events) {
-    try { ctx._events = (await api("/api/events")).events || []; }
-    catch { ctx._events = []; }
+    if (role() === "staff") {
+      ctx._events = [];
+    } else {
+      try { ctx._events = (await api("/api/events")).events || []; }
+      catch { ctx._events = []; }
+    }
   }
   return `<option value="">None</option>` + optionList(ctx._events, value, (e) => `${e.date} · ${e.client || e.title || "Event"}`);
 }
