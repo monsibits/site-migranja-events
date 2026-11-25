@@ -973,7 +973,7 @@ function renderHkJobs(panel, jobsData, areasData, templatesData) {
           <li><label><input type="checkbox" data-hk-item="${esc(item.id)}" ${item.done ? "checked" : ""}> ${esc(item.label)}</label></li>`).join("")}</ul>` : "<p class='muted tiny'>No checklist items.</p>"}
       </article>`).join("") : emptyState("No housekeeping jobs", "Pre- and post-event cleaning jobs will appear here.")}
   `;
-  eventOptions("").then((html) => { const el = panel.querySelector("#job-event"); if (el) el.innerHTML = html; });
+  if (canCreate) eventOptions("").then((html) => { const el = panel.querySelector("#job-event"); if (el) el.innerHTML = html; });
   formFrom("[data-add-job]", async (formData) => {
     const body = Object.fromEntries(formData);
     if (!body.event_id) delete body.event_id;
