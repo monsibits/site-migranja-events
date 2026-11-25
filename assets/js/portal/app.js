@@ -1,4 +1,18 @@
 import { api, clearToken, downloadReport, escapeHtml, formatDate, formatDateTime, formatMoney, getToken, isValidContact, setToken, todayISO, TURNSTILE_SITE_KEY } from "./api.js";
+import {
+  confirmAction,
+  openModal,
+  setModuleContext,
+  viewAccounting,
+  viewEventSheet,
+  viewHousekeeping,
+  viewHr,
+  viewInventory,
+  viewOpsDashboard,
+  viewOpsReports,
+  viewSales,
+  viewSettings
+} from "./modules.js";
 
 const esc = escapeHtml;
 
@@ -17,9 +31,15 @@ const ROUTES = {
   tasks: ["owner", "admin", "staff"],
   attendance: ["owner", "admin", "staff"],
   announcements: ["owner", "admin", "staff"],
+  sales: ["owner", "admin"],
+  housekeeping: ["owner", "admin", "staff"],
+  inventory: ["owner", "admin", "staff"],
+  accounting: ["owner"],
   finances: ["owner"],
+  hr: ["owner", "admin", "staff"],
   reports: ["owner", "admin"],
-  users: ["owner"]
+  users: ["owner"],
+  settings: ["owner"]
 };
 
 let currentUser = null;
@@ -94,9 +114,15 @@ function navItems(role) {
     { route: "tasks", label: "Tasks" },
     { route: "attendance", label: "Attendance" },
     { route: "announcements", label: "Announcements" },
+    { route: "sales", label: "Sales" },
+    { route: "housekeeping", label: "Housekeeping" },
+    { route: "inventory", label: "Inventory" },
+    { route: "accounting", label: "Accounting" },
     { route: "finances", label: "Finances" },
+    { route: "hr", label: "HR" },
     { route: "reports", label: "Reports" },
-    { route: "users", label: "Users" }
+    { route: "users", label: "Users" },
+    { route: "settings", label: "Settings" }
   ].filter((item) => canAccess(role, item.route));
 }
 
@@ -108,9 +134,15 @@ const PAGE_TITLES = {
   tasks: "Tasks",
   attendance: "Attendance",
   announcements: "Announcements",
+  sales: "Sales",
+  housekeeping: "Housekeeping",
+  inventory: "Inventory",
+  accounting: "Accounting",
   finances: "Finances",
+  hr: "HR",
   reports: "Reports",
-  users: "Users"
+  users: "Users",
+  settings: "Settings"
 };
 
 function setPageTitle(route) {
@@ -252,9 +284,8 @@ async function attachSampleBanner() {
   banner.innerHTML = `
     <div>
       <p class="kicker">Sample records</p>
-      <p>This portal has SAMPLE records so you can see how each screen looks. They are marked SAMPLE and do not show on the public booking calendar. They are not real clients or bookings.</p>
+      <p>This portal has SAMPLE records so you can see how each screen looks. They are marked SAMPLE and do not show on the public booking calendar. You can remove them in <a href="#/settings">Settings</a>.</p>
     </div>
-    <button class="btn btn-danger" type="button" data-action="remove-sample">Remove sample data</button>
   `;
   mainEl.prepend(banner);
 }
@@ -363,7 +394,7 @@ function mountLoginTurnstile() {
 }
 
 function renderLogin(message = "", { turnstile = false } = {}) {
-  document.title = "Staff sign in | Mi Granja Events";
+  document.title = "Sign in | Mi Granja Events";
   loginScreen.hidden = false;
   appScreen.hidden = true;
   loginScreen.querySelector("[data-login-panel]").innerHTML = `
@@ -516,7 +547,21 @@ async function bootApp() {
   await renderRoute();
 }
 
+async function bindModuleContext() {
+  setModuleContext({
+    main: mainEl,
+    currentUser,
+    users: usersCache,
+    api,
+    formatDate,
+    formatMoney,
+    downloadReport,
+    go: (route) => { window.location.hash = `#/${route}`; }
+  });
+}
+
 async function renderRoute() {
+  setAccountMenu(false);
   const route = currentRoute();
   setPageTitle(route);
   if (route === "setup") return;
@@ -524,6 +569,7 @@ async function renderRoute() {
     renderLogin();
     return;
   }
+  bindModuleContext();
   if (!canAccess(currentUser.role, route)) {
     mainEl.innerHTML = `
       <div class="portal-card">
@@ -535,6 +581,13 @@ async function renderRoute() {
     renderNav();
     return;
   }
+  const params = new URLSearchParams(window.location.hash.split("?")[1] || "");
+  if (route === "events" && params.get("sheet")) {
+    renderNav();
+    await viewEventSheet(params.get("sheet"));
+    labelTableCells();
+    return;
+  }
   const views = {
     dashboard: viewDashboard,
     events: viewEvents,
@@ -543,110 +596,31 @@ async function renderRoute() {
     tasks: viewTasks,
     attendance: viewAttendance,
     announcements: viewAnnouncements,
+    sales: viewSales,
+    housekeeping: viewHousekeeping,
+    inventory: viewInventory,
+    accounting: viewAccounting,
     finances: viewFinances,
-    reports: viewReports,
-    users: viewUsers
+    hr: viewHr,
+    reports: viewOpsReports,
+    users: viewUsers,
+    settings: viewSettings
   };
-  mainEl.innerHTML = loadingMarkup();
+  renderNav();
   try {
     await (views[route] || viewDashboard)();
-    await attachSampleBanner();
     labelTableCells();
   } catch (err) {
-    if (err.code === "password_change_required") {
-      renderChangePassword();
-      return;
-    }
-    if (err.status === 401) {
-      currentUser = null;
-      clearToken();
-      renderLogin(err.code === "session_expired"
-        ? "Your session has ended. Please sign in again."
-        : "Please sign in.", { turnstile: err.code === "turnstile_required" });
-      return;
-    }
-    mainEl.innerHTML = retryMarkup(err.message);
-    mainEl.querySelector("[data-retry-route]")?.addEventListener("click", () => renderRoute());
+    mainEl.innerHTML = `<div class="portal-card"><h1>Could not load this page</h1><p class="muted">${escapeHtml(err.message || "Please try again.")}</p><p><button class="btn btn-solid" type="button" data-retry>Try again</button></p></div>`;
+    mainEl.querySelector("[data-retry]")?.addEventListener("click", () => renderRoute());
   }
-  renderNav();
-}
-
-function clockCard(punch, extra = "") {
-  const open = punch && punch.time_in && !punch.time_out;
-  const status = !punch
-    ? "You have not timed in today."
-    : open
-      ? `Timed in at ${punch.time_in}.`
-      : `Shift closed: ${punch.time_in}–${punch.time_out}.`;
-  const action = open ? "Time out" : "Time in";
-  return `
-    <article class="portal-card clock-card">
-      <div>
-        <p class="kicker">Today · ${formatDate(todayISO(), { weekday: "long" })}</p>
-        <p class="stat">${escapeHtml(status)}</p>
-        ${extra}
-      </div>
-      <button class="btn btn-solid" type="button" data-action="clock">${action}</button>
-    </article>
-  `;
 }
 
 async function viewDashboard() {
   const today = todayISO();
-  const [shiftsData, tasksData, eventsData] = await Promise.all([
-    api("/api/shifts"),
-    api("/api/tasks"),
-    canAccess(currentUser.role, "events") ? api("/api/events") : Promise.resolve({ events: [] })
-  ]);
-  const attendanceData = await api("/api/attendance");
-  const punch = (attendanceData.attendance || []).find((row) => row.date === today && row.staff_id === currentUser.id)
-    || (attendanceData.attendance || []).find((row) => row.date === today);
+  const attendanceData = await api("/api/attendance").catch(() => ({ attendance: [] }));
   const myPunch = (attendanceData.attendance || []).find((row) => row.staff_id === currentUser.id && row.date === today);
-  const shifts = (shiftsData.shifts || []).filter((shift) => shift.date >= today).slice(0, 4);
-  const tasks = (tasksData.tasks || []).filter((task) => task.status === "open").slice(0, 4);
-  const upcoming = (eventsData.events || []).filter((event) => event.date >= today);
-
-  const management = currentUser.role === "staff"
-    ? ""
-    : `
-      <article class="portal-card">
-        <p class="kicker">Booking requests</p>
-        <p class="stat">${pendingCount} pending</p>
-        <p><a href="#/requests">Review inbox</a></p>
-      </article>
-      <article class="portal-card">
-        <p class="kicker">Upcoming events</p>
-        <p class="stat">${upcoming.length}</p>
-        <p class="muted tiny">${upcoming[0] ? `Next: ${formatDate(upcoming[0].date, { month: "short" })}` : "None yet"}</p>
-      </article>
-    `;
-
-  mainEl.innerHTML = `
-    <div class="page-head">
-      <div>
-        <p class="kicker">Welcome back</p>
-        <h1>${escapeHtml(currentUser.name)}</h1>
-      </div>
-    </div>
-    ${clockCard(myPunch)}
-    <div class="card-grid cols-3 stack-gap">${management}</div>
-    <div class="card-grid cols-2 stack-gap">
-      <section>
-        <h2>Upcoming shifts</h2>
-        ${shifts.length ? `<ul class="stack-list">${shifts.map((shift) => {
-          const eventName = shift.event_title || shift.event_client || "";
-          const who = currentUser.role === "staff"
-            ? [shift.role, eventName].filter(Boolean).join(" · ")
-            : `${personName(shift)} · ${shift.role || ""}${eventName ? ` · ${eventName}` : ""}`;
-          return `<li class="portal-card"><strong>${formatDate(shift.date, { month: "short" })}</strong><p class="muted">${escapeHtml(who)} · ${escapeHtml(shift.start)}–${escapeHtml(shift.end)}</p></li>`;
-        }).join("")}</ul>` : `<p class="muted">No upcoming shifts yet.</p>`}
-      </section>
-      <section>
-        <h2>Open tasks</h2>
-        ${tasks.length ? `<ul class="stack-list">${tasks.map((task) => `<li class="portal-card"><strong>${escapeHtml(task.title)}</strong><p class="muted">${task.due ? `Due ${formatDate(task.due, { month: "short" })}` : "No due date"}</p></li>`).join("")}</ul>` : `<p class="muted">No open tasks.</p>`}
-      </section>
-    </div>
-  `;
+  await viewOpsDashboard({ clockHtml: clockCard(myPunch) });
 }
 
 async function viewEvents() {
@@ -670,10 +644,11 @@ async function viewEvents() {
       <td>${esc(event.pax ?? "—")}</td>
       <td>${esc(event.venue || "—")}</td>
       <td><span class="chip chip-${esc(String(event.status || "").toLowerCase())}">${esc(event.status || "")}</span></td>
-      <td class="row-actions">
+      <td class="row-actions"><div class="action-group">
         <button class="btn btn-ghost" type="button" data-action="edit-event" data-id="${esc(event.id)}">View / Edit</button>
+        ${currentUser.role === "owner" ? `<a class="btn btn-ghost" href="#/events?sheet=${esc(event.id)}">Event sheet</a>` : ""}
         ${event.status !== "Cancelled" && event.status !== "Completed" ? `<button class="btn btn-danger" type="button" data-action="cancel-event" data-id="${esc(event.id)}">Cancel</button>` : ""}
-      </td>
+      </div></td>
     </tr>
   `).join("");
   const tab = (value, label) => `<button class="btn btn-ghost" type="button" data-action="filter-events" data-range="${value}" aria-pressed="${range === value ? "true" : "false"}">${label}</button>`;
@@ -715,7 +690,7 @@ function eventForm(event) {
   const ev = event || {};
   const sid = ev.id || "new";
   const types = ["Wedding","Debut","Birthday","Christening","Corporate","Other"];
-  const venues = ["Ballroom","The Nook","Amore Garden","Any"];
+  const venues = ["Ballroom","The Nook","Amore Garden"];
   const statuses = ["Confirmed","Tentative","Setup","Booked","Completed","Cancelled"];
   const opts = (list, value) => list.map((item) => `<option ${value === item ? "selected" : ""}>${item}</option>`).join("");
   return `
@@ -730,20 +705,37 @@ function eventForm(event) {
       <div class="field"><label for="ev-venue-${esc(sid)}">Venue</label><select id="ev-venue-${esc(sid)}" name="venue">${opts(venues, ev.venue)}</select></div>
       <div class="field"><label for="ev-status-${esc(sid)}">Status</label><select id="ev-status-${esc(sid)}" name="status">${opts(statuses, ev.status)}</select></div>
       ${currentUser.role === "owner" ? `<div class="field"><label for="ev-fee-${esc(sid)}">Fee</label><input id="ev-fee-${esc(sid)}" name="fee" type="number" min="0" value="${esc(ev.fee ?? "")}"></div>
-        <div class="field"><label for="ev-deposit-${esc(sid)}">Deposit</label><input id="ev-deposit-${esc(sid)}" name="deposit" type="number" min="0" value="${esc(ev.deposit ?? "")}"></div>` : ""}
+        <div class="field"><label for="ev-deposit-${esc(sid)}">Deposit</label><input id="ev-deposit-${esc(sid)}" name="deposit" type="number" min="0" value="${esc(ev.deposit ?? "")}"></div>
+        ${event ? `<div class="field"><p class="kicker">Contract total</p><p>${ev.contract_total != null && ev.contract_total !== "" ? formatMoney(ev.contract_total) : "—"}</p></div>
+        <div class="field"><p class="kicker">Balance</p><p>${ev.fee != null && ev.fee !== "" ? formatMoney((Number(ev.fee) || 0) - (Number(ev.deposit) || 0)) : "TBD"}</p></div>
+        <p><a href="#/events?sheet=${esc(ev.id)}">Open event sheet</a></p>` : ""}` : ""}
       <div data-form-error></div>
-      <button class="btn btn-solid" type="submit">${event ? "Save changes" : "Save event"}</button>
+      <div class="row-actions">
+        <button class="btn btn-solid" type="submit">${event ? "Save changes" : "Save event"}</button>
+        ${event ? `<button class="btn btn-ghost" type="button" data-close-event>Close</button>` : ""}
+      </div>
     </form>
   `;
 }
 
 function bindEventForm(form, event) {
   if (!form) return;
+  form.querySelector("[data-close-event]")?.addEventListener("click", () => {
+    window.location.hash = "#/events";
+  });
   form.addEventListener("submit", async (submitEvent) => {
     submitEvent.preventDefault();
+    const errorBox = form.querySelector("[data-form-error]");
+    if (errorBox) errorBox.textContent = "";
     const dataForm = new FormData(form);
+    const client = String(dataForm.get("client") || "").trim();
+    if (!client) {
+      showError(errorBox, "Please enter the client name.");
+      form.querySelector("[name=client]")?.focus();
+      return;
+    }
     const payload = {
-      date: dataForm.get("date"), client: dataForm.get("client"), title: dataForm.get("title"),
+      date: dataForm.get("date"), client, title: dataForm.get("title"),
       type: dataForm.get("type"), package: dataForm.get("package"),
       pax: dataForm.get("pax") === "" ? null : Number(dataForm.get("pax")),
       venue: dataForm.get("venue"), status: dataForm.get("status")
@@ -758,7 +750,7 @@ function bindEventForm(form, event) {
       window.location.hash = "#/events";
       await viewEvents();
     } catch (err) {
-      showError(form.querySelector("[data-form-error]"), err.message);
+      showError(errorBox, err.message);
     }
   });
 }
@@ -1071,8 +1063,9 @@ async function viewAnnouncements() {
 }
 
 async function viewUsers() {
-  await loadUsers();
-  const rows = usersCache.map((item) => `
+  const data = await api("/api/users");
+  const people = data.users || data.people || [];
+  const rows = people.map((item) => `
     <tr>
       <td>${escapeHtml(item.name)}${sampleMark(item)}</td>
       <td>${escapeHtml(item.email)}</td>
@@ -1142,12 +1135,7 @@ mainEl.addEventListener("click", async (event) => {
   const action = button.dataset.action;
   try {
     if (action === "remove-sample") {
-      const ok = window.confirm("Remove all SAMPLE records? This cannot be undone. Your owner account and any real records will stay.");
-      if (!ok) return;
-      await api("/api/sample/remove", { method: "POST", body: {} });
-      await loadUsers().catch(() => { usersCache = []; });
-      await refreshPending();
-      await renderRoute();
+      window.location.hash = "#/settings";
       return;
     }
     if (action === "clock") {
@@ -1155,19 +1143,24 @@ mainEl.addEventListener("click", async (event) => {
       await renderRoute();
     }
     if (action === "approve" || action === "decline") {
-      const ok = window.confirm(action === "approve"
-        ? "Approve this request? An event will be added, and the date will show as booked on the public calendar."
-        : "Decline this request?");
-      if (!ok) return;
       const body = { decision: action === "approve" ? "approved" : "declined" };
       if (action === "decline") {
-        const reason = window.prompt("Please enter a reason for declining (at least 3 characters).");
-        if (reason === null) return;
-        if (reason.trim().length < 3) {
-          window.alert("Please enter a reason of at least 3 characters.");
-          return;
-        }
-        body.reason = reason.trim();
+        const reason = await openModal({
+          title: "Decline this request?",
+          message: "Please enter a reason of at least 3 characters.",
+          confirmLabel: "Decline",
+          danger: true,
+          input: { label: "Reason", name: "reason", required: true, min: 3, error: "Please enter a reason of at least 3 characters." }
+        });
+        if (reason == null) return;
+        body.reason = String(reason).trim();
+      } else {
+        const ok = await confirmAction(
+          "Approve this request?",
+          "An event will be added, and the date will show as booked on the public calendar.",
+          "Approve"
+        );
+        if (!ok) return;
       }
       await api(`/api/requests/${button.dataset.id}/decide`, { method: "POST", body });
       await refreshPending();
@@ -1181,7 +1174,7 @@ mainEl.addEventListener("click", async (event) => {
       return;
     }
     if (action === "cancel-event") {
-      const ok = window.confirm("Cancel this event? If no other event is holding the same date and venue, the date will become available again.");
+      const ok = await confirmAction("Cancel this event?", "If no other event is holding the same date and venue, the date will become available again.", "Cancel event");
       if (!ok) return;
       await api(`/api/events/${button.dataset.id}`, { method: "PATCH", body: { status: "Cancelled" } });
       await renderRoute();
@@ -1200,19 +1193,20 @@ mainEl.addEventListener("click", async (event) => {
       return;
     }
     if (action === "correct-attendance") {
-      const timeIn = window.prompt("Time in (HH:MM, 24-hour).", button.dataset.in || "");
-      if (timeIn === null) return;
-      const timeOut = window.prompt("Time out (HH:MM, 24-hour). Leave blank if still open.", button.dataset.out || "");
-      if (timeOut === null) return;
-      const note = window.prompt("Reason for this correction (required).");
-      if (note === null) return;
-      if (note.trim().length < 3) {
-        window.alert("Please enter a reason of at least 3 characters.");
-        return;
-      }
+      const values = await openModal({
+        title: "Correct attendance",
+        message: "Use 24-hour times (HH:MM). Leave time out blank if the day is still open.",
+        confirmLabel: "Save correction",
+        fields: [
+          { name: "time_in", label: "Time in", value: button.dataset.in || "", required: true, error: "Please enter the time in." },
+          { name: "time_out", label: "Time out", value: button.dataset.out || "" },
+          { name: "note", label: "Reason", required: true, min: 3, error: "Please enter a reason of at least 3 characters." }
+        ]
+      });
+      if (values == null) return;
       await api(`/api/attendance/${button.dataset.id}`, {
         method: "PATCH",
-        body: { time_in: timeIn.trim(), time_out: timeOut.trim(), note: note.trim() }
+        body: { time_in: values.time_in.trim(), time_out: (values.time_out || "").trim(), note: values.note.trim() }
       });
       await renderRoute();
       return;
@@ -1228,12 +1222,12 @@ mainEl.addEventListener("click", async (event) => {
         await downloadReport(button.dataset.table, button.dataset.format);
       } catch (err) {
         if (errEl) { errEl.hidden = false; errEl.textContent = err.message; }
-        else window.alert(err.message);
+        else await openModal({ title: "Download failed", message: err.message, confirmLabel: "OK", cancelLabel: "Close" });
       }
       return;
     }
     if (action === "logout-all") {
-      const ok = window.confirm("Sign out of this account on every device, including this one?");
+      const ok = await confirmAction("Sign out everywhere?", "This will sign out this account on every device, including this one.", "Sign out everywhere");
       if (!ok) return;
       await api("/api/auth/logout-all", { method: "POST", body: {} });
       clearToken();
@@ -1243,7 +1237,7 @@ mainEl.addEventListener("click", async (event) => {
       return;
     }
   } catch (err) {
-    window.alert(err.message);
+    await openModal({ title: "Something went wrong", message: err.message, confirmLabel: "OK", cancelLabel: "Close" });
   }
 });
 
@@ -1254,7 +1248,7 @@ mainEl.addEventListener("change", async (event) => {
     await api(`/api/users/${select.dataset.id}`, { method: "PATCH", body: { role: select.value } });
     await loadUsers();
   } catch (err) {
-    window.alert(err.message);
+    await openModal({ title: "Could not update the role", message: err.message, confirmLabel: "OK", cancelLabel: "Close" });
     await renderRoute();
   }
 });
@@ -1264,7 +1258,7 @@ document.querySelector("[data-account-toggle]")?.addEventListener("click", (even
   const menu = document.querySelector("[data-account-menu]");
   setAccountMenu(Boolean(menu && menu.hidden));
 });
-document.addEventListener("click", (event) => {
+document.addEventListener("pointerdown", (event) => {
   if (!event.target.closest(".portal-user")) setAccountMenu(false);
 });
 document.addEventListener("keydown", (event) => {
@@ -1275,8 +1269,8 @@ document.querySelector("[data-logout]").addEventListener("click", () => {
   signOut({ everywhere: false });
 });
 
-document.querySelector("[data-logout-all]")?.addEventListener("click", () => {
-  const ok = window.confirm("Sign out of this account on every device, including this one?");
+document.querySelector("[data-logout-all]")?.addEventListener("click", async () => {
+  const ok = await confirmAction("Sign out everywhere?", "This will sign out this account on every device, including this one.", "Sign out everywhere");
   if (!ok) return;
   signOut({ everywhere: true });
 });

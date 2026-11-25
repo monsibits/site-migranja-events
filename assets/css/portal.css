@@ -799,12 +799,24 @@ table.data td.row-actions,
 table.data th.actions {
   white-space: nowrap;
   vertical-align: middle;
+  width: 1%;
 }
 table.data td { vertical-align: middle; }
 table.data td.row-actions .btn { white-space: nowrap; }
+table.data td.row-actions .action-group {
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 0.35rem;
+  align-items: center;
+  justify-content: flex-end;
+  min-height: 2.25rem;
+}
+@media (min-width: 720px) {
+  .table-wrap { overflow-x: auto; }
+}
 
 /* Phone: tables become stacked cards */
-@media (max-width: 599px) {
+@media (max-width: 719px) {
   .table-wrap {
     border: 0;
     background: transparent;
@@ -866,7 +878,7 @@ table.data td.row-actions .btn { white-space: nowrap; }
 }
 
 /* Public calendar: full width on a phone, room above the sticky visit bar */
-@media (max-width: 719px) {
+@media (max-width: 879px) {
   .cal-layout {
     width: 100%;
     padding-bottom: calc(var(--sticky-cta-space, 4.75rem) + 1.5rem);
