@@ -93,18 +93,24 @@ function showSigningOut() {
   }
 }
 
+let signingOut = false;
+let logoutMessage = "";
+
 async function signOut({ everywhere = false } = {}) {
+  signingOut = true;
   const hadToken = Boolean(getToken());
   currentUser = null;
-  window.location.hash = "";
   setAccountMenu(false);
   showSigningOut();
   if (hadToken) {
     const path = everywhere ? "/api/auth/logout-all" : "/api/auth/logout";
     try { await api(path, { method: "POST", body: {} }); } catch { /* local session will still be cleared */ }
   }
+  logoutMessage = everywhere ? "You have been signed out everywhere. Please sign in again." : "You've been signed out.";
   clearToken();
-  renderLogin(everywhere ? "You have been signed out everywhere. Please sign in again." : "You've been signed out.");
+  window.location.hash = "";
+  renderLogin(logoutMessage);
+  signingOut = false;
 }
 
 function navItems(role) {
@@ -370,6 +376,7 @@ function renderSetup() {
           password: String(data.get("password") || "")
         }
       });
+      logoutMessage = "";
       setToken(result.token, result.expiresAt);
       currentUser = result.user;
       go("dashboard");
@@ -480,7 +487,7 @@ async function boot() {
   }
   if (!getToken()) {
     currentUser = null;
-    renderLogin();
+    renderLogin(logoutMessage);
     return;
   }
   try {
@@ -490,6 +497,7 @@ async function boot() {
   } catch (err) {
     currentUser = null;
     clearToken();
+    if (signingOut) return;
     const message = err.code === "session_expired" || err.status === 401
       ? "Your session has ended. Please sign in again."
       : (err.message || "Please sign in.");
@@ -636,7 +644,7 @@ async function renderRoute() {
   const params = new URLSearchParams(window.location.hash.split("?")[1] || "");
   if (route === "events" && params.get("sheet")) {
     renderNav();
-    await viewEventSheet(params.get("sheet"));
+    await viewEventSheet(params.get("sheet"), pageMain);
     labelTableCells();
     return;
   }
@@ -660,7 +668,7 @@ async function renderRoute() {
   };
   renderNav();
   try {
-    await (views[route] || viewDashboard)();
+    await (views[route] || viewDashboard)(pageMain);
     if (gen !== routeGen) return;
     labelTableCells();
     await refreshDemoBar();
@@ -690,14 +698,14 @@ function clockCard(punch, extra = "") {
   </article>`;
 }
 
-async function viewDashboard() {
+async function viewDashboard(main = pageMain) {
   const today = todayISO();
   const attendanceData = await api("/api/attendance").catch(() => ({ attendance: [] }));
   const myPunch = (attendanceData.attendance || []).find((row) => row.staff_id === currentUser.id && row.date === today);
-  await viewOpsDashboard({ clockHtml: clockCard(myPunch) });
+  await viewOpsDashboard({ clockHtml: clockCard(myPunch), main });
 }
 
-async function viewEvents() {
+async function viewEvents(main = pageMain) {
   const params = new URLSearchParams(window.location.hash.split("?")[1] || "");
   const range = params.get("range") || "all";
   const status = params.get("status") || "";
@@ -726,7 +734,7 @@ async function viewEvents() {
     </tr>
   `).join("");
   const tab = (value, label) => `<button class="btn btn-ghost" type="button" data-action="filter-events" data-range="${value}" aria-pressed="${range === value ? "true" : "false"}">${label}</button>`;
-  pageMain.innerHTML = `
+  main.innerHTML = `
     <div class="page-head"><div><p class="kicker">Operations</p><h1>Events</h1></div></div>
     <div class="filter-tabs" role="tablist" aria-label="Event range">
       ${tab("all", "All")}${tab("upcoming", "Upcoming")}${tab("past", "Past")}
@@ -747,7 +755,7 @@ async function viewEvents() {
       </table>
     </div>
   `;
-  pageMain.querySelector("[data-event-filters]").addEventListener("submit", (event) => {
+  main.querySelector("[data-event-filters]").addEventListener("submit", (event) => {
     event.preventDefault();
     const dataForm = new FormData(event.target);
     const next = new URLSearchParams();
@@ -756,8 +764,8 @@ async function viewEvents() {
     if (dataForm.get("q")) next.set("q", dataForm.get("q"));
     window.location.hash = `#/events?${next.toString()}`;
   });
-  bindEventForm(pageMain.querySelector("[data-edit-event-form]"), editing);
-  bindEventForm(pageMain.querySelector("details [data-event-form]"));
+  bindEventForm(main.querySelector("[data-edit-event-form]"), editing);
+  bindEventForm(main.querySelector("details [data-event-form]"));
 }
 
 function eventForm(event) {
@@ -833,7 +841,7 @@ function bindEventForm(form, event) {
   });
 }
 
-async function viewRequests() {
+async function viewRequests(main = pageMain) {
   const data = await api("/api/requests");
   await refreshPending();
   const cards = (data.requests || []).map((req) => {
@@ -860,14 +868,14 @@ async function viewRequests() {
       </article>
     `;
   }).join("") || `<p class="muted">No booking requests yet. They will appear here when someone uses the public calendar.</p>`;
-  pageMain.innerHTML = `
+  main.innerHTML = `
     <div class="page-head"><div><p class="kicker">Inbox</p><h1>Booking requests</h1></div></div>
     <p class="muted">Approve to mark the date as booked and create an event. Decline frees the date again. Pending requests no longer lock the public calendar by themselves.</p>
     <div class="stack-list">${cards}</div>
   `;
 }
 
-async function viewSchedule() {
+async function viewSchedule(main = pageMain) {
   const data = await api("/api/shifts");
   const events = canAccess(currentUser.role, "events") ? (await api("/api/events").catch(() => ({ events: [] }))).events || [] : [];
   const rows = (data.shifts || []).map((shift) => {
@@ -900,7 +908,7 @@ async function viewSchedule() {
         <button class="btn btn-solid" type="submit">Save shift</button>
       </form>
     </details>`;
-  pageMain.innerHTML = `
+  main.innerHTML = `
     <div class="page-head"><div><p class="kicker">Roster</p><h1>${currentUser.role === "staff" ? "Your schedule" : "Staff schedule"}</h1></div></div>
     ${addForm}
     <div class="table-wrap">
@@ -910,7 +918,7 @@ async function viewSchedule() {
       </table>
     </div>
   `;
-  const form = pageMain.querySelector("[data-add-shift]");
+  const form = main.querySelector("[data-add-shift]");
   if (form) form.addEventListener("submit", async (event) => {
     event.preventDefault();
     const dataForm = new FormData(form);
@@ -927,7 +935,7 @@ async function viewSchedule() {
   });
 }
 
-async function viewTasks() {
+async function viewTasks(main = pageMain) {
   const data = await api("/api/tasks");
   const events = canAccess(currentUser.role, "events") ? (await api("/api/events").catch(() => ({ events: [] }))).events || [] : [];
   const rows = (data.tasks || []).map((task) => {
@@ -958,7 +966,7 @@ async function viewTasks() {
         <button class="btn btn-solid" type="submit">Save task</button>
       </form>
     </details>`;
-  pageMain.innerHTML = `
+  main.innerHTML = `
     <div class="page-head"><div><p class="kicker">To do</p><h1>${currentUser.role === "staff" ? "Your tasks" : "Tasks"}</h1></div></div>
     ${addForm}
     <div class="table-wrap">
@@ -968,7 +976,7 @@ async function viewTasks() {
       </table>
     </div>
   `;
-  const form = pageMain.querySelector("[data-add-task]");
+  const form = main.querySelector("[data-add-task]");
   if (form) form.addEventListener("submit", async (event) => {
     event.preventDefault();
     const dataForm = new FormData(form);
@@ -984,7 +992,7 @@ async function viewTasks() {
   });
 }
 
-async function viewAttendance() {
+async function viewAttendance(main = pageMain) {
   const params = new URLSearchParams(window.location.hash.split("?")[1] || "");
   const from = params.get("from") || "";
   const to = params.get("to") || "";
@@ -1015,7 +1023,7 @@ async function viewAttendance() {
         ${staffChoices().map((item) => `<option value="${esc(item.id)}" ${staff === item.id ? "selected" : ""}>${esc(item.name)}</option>`).join("")}
       </select>
     </div>`;
-  pageMain.innerHTML = `
+  main.innerHTML = `
     <div class="page-head"><div><p class="kicker">Time log</p><h1>${currentUser.role === "staff" ? "Your attendance" : "Attendance"}</h1></div></div>
     ${clockCard(myPunch)}
     <form class="toolbar" data-att-filters>
@@ -1032,7 +1040,7 @@ async function viewAttendance() {
       </table>
     </div>
   `;
-  pageMain.querySelector("[data-att-filters]").addEventListener("submit", (event) => {
+  main.querySelector("[data-att-filters]").addEventListener("submit", (event) => {
     event.preventDefault();
     const dataForm = new FormData(event.target);
     const next = new URLSearchParams();
@@ -1043,7 +1051,7 @@ async function viewAttendance() {
   });
 }
 
-async function viewFinances() {
+async function viewFinances(main = pageMain) {
   const data = await api("/api/finances");
   const hasSample = (data.events || []).some(isSample);
   const rows = (data.events || []).map((event) => `
@@ -1059,7 +1067,7 @@ async function viewFinances() {
   const sampleTotals = data.sampleTotals || { fees: 0, collected: 0, deposits: 0, balance: 0 };
   const collected = totals.collected ?? totals.deposits;
   const sampleCollected = sampleTotals.collected ?? sampleTotals.deposits;
-  pageMain.innerHTML = `
+  main.innerHTML = `
     <div class="page-head"><div><p class="kicker">Owner only</p><h1>Event revenue and balances</h1></div></div>
     <p class="muted">Balance is the contract total minus payments received.${data.demoMode ? " Demo mode is on, so SAMPLE events are included in the totals and marked SAMPLE in the list." : hasSample ? " Totals below are for real events only. Sample events are totaled separately." : ""}</p>
     <div class="card-grid cols-3">
@@ -1077,7 +1085,7 @@ async function viewFinances() {
   `;
 }
 
-async function viewReports() {
+async function viewReports(main = pageMain) {
   const tables = [
     { id: "events", label: "Events" },
     { id: "requests", label: "Booking requests" },
@@ -1107,7 +1115,7 @@ async function viewReports() {
       <td><span class="chip">${esc(event.status || "")}</span></td>
     </tr>
   `).join("");
-  pageMain.innerHTML = `
+  main.innerHTML = `
     <div class="page-head"><div><p class="kicker">Exports</p><h1>Reports</h1></div></div>
     <p class="muted">${hasSample
       ? "Sample rows are included in downloads and marked SAMPLE, so you can see the demo. A Sample column is added to the file. They come out of the files once sample data is removed."
@@ -1132,7 +1140,7 @@ async function viewReports() {
 }
 
 
-async function viewAnnouncements() {
+async function viewAnnouncements(main = pageMain) {
   const data = await api("/api/announcements");
   const items = (data.announcements || []).map((item) => `
     <article class="portal-card">
@@ -1152,12 +1160,12 @@ async function viewAnnouncements() {
       </form>
     </details>
   `;
-  pageMain.innerHTML = `
+  main.innerHTML = `
     <div class="page-head"><div><p class="kicker">Notice board</p><h1>Announcements</h1></div></div>
     ${compose}
     <div class="stack-list stack-gap">${items}</div>
   `;
-  const form = pageMain.querySelector("[data-add-announcement]");
+  const form = main.querySelector("[data-add-announcement]");
   if (form) {
     form.addEventListener("submit", async (event) => {
       event.preventDefault();
@@ -1172,7 +1180,7 @@ async function viewAnnouncements() {
   }
 }
 
-async function viewUsers() {
+async function viewUsers(main = pageMain) {
   const data = await api("/api/users");
   const people = data.users || data.people || [];
   const rows = people.map((item) => `
@@ -1190,7 +1198,7 @@ async function viewUsers() {
       </td>
     </tr>
   `).join("");
-  pageMain.innerHTML = `
+  main.innerHTML = `
     <div class="page-head"><div><p class="kicker">Owner only</p><h1>Users</h1></div></div>
     <p class="muted">Add a staff or admin account and share the password with them yourself. They will be asked to change it after they sign in. There is no email invite yet.</p>
     <p class="row-actions"><button class="btn btn-ghost" type="button" data-action="logout-all">Sign out everywhere</button></p>
@@ -1217,7 +1225,7 @@ async function viewUsers() {
       </table>
     </div>
   `;
-  const form = pageMain.querySelector("[data-add-user]");
+  const form = main.querySelector("[data-add-user]");
   form.addEventListener("submit", async (event) => {
     event.preventDefault();
     const dataForm = new FormData(form);
@@ -1355,11 +1363,7 @@ mainEl.addEventListener("click", async (event) => {
     if (action === "logout-all") {
       const ok = await confirmAction("Sign out everywhere?", "This will sign out this account on every device, including this one.", "Sign out everywhere");
       if (!ok) return;
-      await api("/api/auth/logout-all", { method: "POST", body: {} });
-      clearToken();
-      currentUser = null;
-      window.location.hash = "";
-      renderLogin("You have been signed out everywhere. Please sign in again.");
+      await signOut({ everywhere: true });
       return;
     }
   } catch (err) {
@@ -1423,6 +1427,7 @@ navEl.addEventListener("click", (event) => {
   if (event.target.closest("a") && !isWide()) setNavOpen(false);
 });
 window.addEventListener("hashchange", () => {
+  if (signingOut) return;
   if (isSetupView()) renderSetup();
   else if (currentUser) renderRoute();
   else boot();

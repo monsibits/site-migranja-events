@@ -561,11 +561,12 @@ table.data tr:last-child td { border-bottom: 0; }
 }
 
 @media (min-width: 720px) {
-  .card-grid.cols-2, .card-grid.cols-3 { grid-template-columns: repeat(2, 1fr); }
+  .card-grid.cols-2, .card-grid.cols-3, .card-grid.cols-4 { grid-template-columns: repeat(2, 1fr); }
 }
 
 @media (min-width: 1080px) {
   .card-grid.cols-3 { grid-template-columns: repeat(3, 1fr); }
+  .card-grid.cols-4 { grid-template-columns: repeat(4, 1fr); }
 }
 
 .clock-card, .row-actions {

@@ -311,8 +311,8 @@ export function svgChart(rows, series) {
   </div>`;
 }
 
-function formFrom(selector, map) {
-  const form = typeof selector === "string" ? ctx.main.querySelector(selector) : selector;
+function formFrom(selector, map, root) {
+  const form = typeof selector === "string" ? (root || ctx.main).querySelector(selector) : selector;
   if (!form) return null;
   form.addEventListener("submit", async (event) => {
     event.preventDefault();
@@ -372,7 +372,7 @@ async function eventOptions(value) {
   return `<option value="">None</option>` + optionList(ctx._events, value, (e) => `${e.date} · ${e.client || e.title || "Event"}`);
 }
 
-export async function viewOpsDashboard({ clockHtml = "" } = {}) {
+export async function viewOpsDashboard({ clockHtml = "", main = ctx.main } = {}) {
   const today = todayISO();
   const [dash, shiftsData, tasksData] = await Promise.all([
     api("/api/dashboard").catch(() => null),
@@ -430,7 +430,7 @@ export async function viewOpsDashboard({ clockHtml = "" } = {}) {
     ? `<ul class="stack-list">${tasks.map((task) => `<li class="portal-card"><strong>${esc(task.title)}</strong><p class="muted">${task.due ? `Due ${formatDate(task.due, { month: "short" })}` : "No due date"}</p>${sampleChip(task)}</li>`).join("")}</ul>`
     : `<p class="muted">No open tasks.</p>`;
 
-  ctx.main.innerHTML = `
+  main.innerHTML = `
     ${pageHead("Welcome back", ctx.user?.name || "Dashboard")}
     ${clockHtml}
     <div class="card-grid cols-3 stack-gap">${ownerCards}${sharedCards}</div>
@@ -459,7 +459,7 @@ async function loadSalesData() {
   return { clients, leads, packages, quotes, contracts, payments, pipeline };
 }
 
-export async function viewSales() {
+export async function viewSales(main = ctx.main) {
   const tab = currentTab("pipeline");
   const data = await loadSalesData();
   const tabs = [
@@ -471,12 +471,12 @@ export async function viewSales() {
     { id: "contracts", label: "Contracts" }
   ];
   if (isOwner()) tabs.push({ id: "payments", label: "Payments" });
-  ctx.main.innerHTML = `
+  main.innerHTML = `
     ${pageHead("Sales", "Sales and bookings", "Leads, packages, quotes, contracts and receipts.")}
     ${tabBar("sales", tabs, tab)}
     <div data-sales-panel></div>
   `;
-  const panel = ctx.main.querySelector("[data-sales-panel]");
+  const panel = main.querySelector("[data-sales-panel]");
   if (tab === "pipeline") renderPipeline(panel, data);
   else if (tab === "clients") renderClients(panel, data);
   else if (tab === "leads") renderLeads(panel, data);
@@ -547,7 +547,7 @@ function renderClients(panel, data) {
   formFrom("[data-add-client]", async (formData) => {
     await api("/api/clients", { method: "POST", body: Object.fromEntries(formData) });
     await viewSales();
-  });
+  }, panel);
   panel.querySelectorAll("[data-edit-client]").forEach((btn) => {
     btn.addEventListener("click", async () => {
       const row = rows.find((item) => item.id === btn.dataset.editClient);
@@ -607,7 +607,7 @@ function renderLeads(panel, data) {
     if (body.pax === "") body.pax = null;
     await api("/api/leads", { method: "POST", body });
     await viewSales();
-  });
+  }, panel);
   panel.querySelectorAll("[data-lead-stage]").forEach((select) => {
     select.addEventListener("change", async () => {
       try {
@@ -752,10 +752,11 @@ function renderQuotes(panel, data) {
       body.client_id = (clients.find((c) => c.name === body.client_name) || {}).id || null;
       if (!body.venue) body.venue = chosen.venue || "";
     }
+    if (!(await confirmRealWrite())) return;
     await api("/api/quotes", { method: "POST", body });
     window.location.hash = "#/sales?tab=quotes";
     await viewSales();
-  });
+  }, panel);
   panel.querySelectorAll("[data-print-quote]").forEach((btn) => {
     btn.addEventListener("click", () => {
       const quote = rows.find((row) => row.id === btn.dataset.printQuote);
@@ -832,12 +833,13 @@ function renderContracts(panel, data) {
     </table></div>` : emptyState("No contracts yet", "Accepted quotes and new bookings will appear here.")}
   `;
   formFrom("[data-add-contract]", async (formData) => {
+    if (!(await confirmRealWrite())) return;
     const body = Object.fromEntries(formData);
     if (body.deposit_due === "") delete body.deposit_due;
     if (!body.quote_id) delete body.quote_id;
     await api("/api/contracts", { method: "POST", body });
     await viewSales();
-  });
+  }, panel);
   panel.querySelectorAll("[data-print-contract]").forEach((btn) => {
     btn.addEventListener("click", () => {
       const row = rows.find((item) => item.id === btn.dataset.printContract);
@@ -915,7 +917,7 @@ function renderPayments(panel, data) {
     if (!(await confirmRealWrite())) return;
     await api("/api/payments", { method: "POST", body });
     await viewSales();
-  });
+  }, panel);
   panel.querySelectorAll("[data-print-or]").forEach((btn) => {
     btn.addEventListener("click", () => {
       const row = rows.find((item) => item.id === btn.dataset.printOr);
@@ -937,10 +939,10 @@ function renderPayments(panel, data) {
 }
 
 
-export async function viewEventSheet(eventId) {
+export async function viewEventSheet(eventId, main = ctx.main) {
   const id = eventId || params().get("sheet");
   if (!id) {
-    ctx.main.innerHTML = emptyState("Choose an event", "Open an event sheet from the Events list.");
+    main.innerHTML = emptyState("Choose an event", "Open an event sheet from the Events list.");
     return;
   }
   const data = await api(`/api/events/${id}/sheet`);
@@ -951,7 +953,7 @@ export async function viewEventSheet(eventId) {
   const jobs = data.jobs || [];
   const balance = data.balance;
   const people = ctx.users || [];
-  ctx.main.innerHTML = `
+  main.innerHTML = `
     ${pageHead("Event sheet", ev.client || ev.title || "Event", `${formatDate(ev.date, { weekday: "long", month: "long" })} · ${esc(ev.venue || "")} · ${esc(ev.status || "")}${sampleChip(ev)}`)}
     <p><a href="#/events">Back to events</a></p>
     ${balance ? `<div class="card-grid cols-3">
@@ -990,10 +992,10 @@ export async function viewEventSheet(eventId) {
     if (!body.coordinator_id) body.coordinator_id = null;
     await api(`/api/events/${id}/sheet`, { method: "PATCH", body });
     await viewEventSheet(id);
-  });
+  }, main);
 }
 
-export async function viewHousekeeping() {
+export async function viewHousekeeping(main = ctx.main) {
   const tab = currentTab("jobs");
   const [jobs, areas, templates, tickets] = await Promise.all([
     api("/api/hk/jobs"),
@@ -1007,12 +1009,12 @@ export async function viewHousekeeping() {
     { id: "templates", label: "Checklists" },
     { id: "tickets", label: "Tickets" }
   ];
-  ctx.main.innerHTML = `
+  main.innerHTML = `
     ${pageHead("Housekeeping", "Housekeeping and maintenance", "Pre- and post-event cleaning, area setup, and issue tickets.")}
     ${tabBar("housekeeping", tabs, tab)}
     <div data-hk-panel></div>
   `;
-  const panel = ctx.main.querySelector("[data-hk-panel]");
+  const panel = main.querySelector("[data-hk-panel]");
   if (tab === "jobs") renderHkJobs(panel, jobs, areas, templates);
   else if (tab === "areas") renderAreas(panel, areas);
   else if (tab === "templates") renderTemplates(panel, templates, areas);
@@ -1063,7 +1065,7 @@ function renderHkJobs(panel, jobsData, areasData, templatesData) {
     if (!body.template_id) delete body.template_id;
     await api("/api/hk/jobs", { method: "POST", body });
     await viewHousekeeping();
-  });
+  }, panel);
   panel.querySelectorAll("[data-job-status]").forEach((select) => {
     select.addEventListener("change", async () => {
       try {
@@ -1110,7 +1112,7 @@ function renderAreas(panel, areasData) {
     if (!body.venue_id) delete body.venue_id;
     await api("/api/areas", { method: "POST", body });
     await viewHousekeeping();
-  });
+  }, panel);
 }
 
 function renderTemplates(panel, templatesData, areasData) {
@@ -1136,7 +1138,7 @@ function renderTemplates(panel, templatesData, areasData) {
     if (!body.area_id) delete body.area_id;
     await api("/api/hk/templates", { method: "POST", body });
     await viewHousekeeping();
-  });
+  }, panel);
 }
 
 function renderTickets(panel, ticketsData, areasData) {
@@ -1172,7 +1174,7 @@ function renderTickets(panel, ticketsData, areasData) {
     if (!body.assigned_to) delete body.assigned_to;
     await api("/api/maintenance", { method: "POST", body });
     await viewHousekeeping();
-  });
+  }, panel);
   panel.querySelectorAll("[data-ticket-status]").forEach((select) => {
     select.addEventListener("change", async () => {
       try { await api(`/api/maintenance/${select.dataset.id}`, { method: "PATCH", body: { status: select.value } }); }
@@ -1182,7 +1184,7 @@ function renderTickets(panel, ticketsData, areasData) {
 }
 
 
-export async function viewInventory() {
+export async function viewInventory(main = ctx.main) {
   const tab = currentTab("stock");
   const [stock, items, moves, allocations, suppliers, orders] = await Promise.all([
     api("/api/inventory/stock"),
@@ -1199,12 +1201,12 @@ export async function viewInventory() {
     { id: "events", label: "Event use" }
   ];
   if (isOwner()) tabs.push({ id: "po", label: "Purchase orders" });
-  ctx.main.innerHTML = `
+  main.innerHTML = `
     ${pageHead("Inventory", "Inventory", "Stock on hand, movements, reorder alerts and per-event use.")}
     ${tabBar("inventory", tabs, tab)}
     <div data-inv-panel></div>
   `;
-  const panel = ctx.main.querySelector("[data-inv-panel]");
+  const panel = main.querySelector("[data-inv-panel]");
   if (tab === "stock") renderStock(panel, stock, items);
   else if (tab === "items") renderItems(panel, items, stock);
   else if (tab === "moves") renderMoves(panel, moves, items);
@@ -1264,7 +1266,7 @@ function renderPOs(panel, ordersData, suppliersData, itemsData) {
     showToast("Purchase order saved.");
     window.location.hash = "#/inventory?tab=po";
     await viewInventory();
-  });
+  }, panel);
   const detail = panel.querySelector("[data-po-detail]");
   const showPo = (row, editing) => {
     if (!detail || !row) return;
@@ -1292,7 +1294,7 @@ function renderPOs(panel, ordersData, suppliersData, itemsData) {
         await api(`/api/purchase-orders/${row.id}`, { method: "PATCH", body });
         showToast("Purchase order updated.");
         await viewInventory();
-      });
+      }, panel);
     }
   };
   panel.querySelectorAll("[data-view-po]").forEach((btn) => {
@@ -1355,7 +1357,7 @@ function renderStock(panel, stockData, itemsData) {
     body.qty = Number(body.qty);
     await api("/api/inventory/moves", { method: "POST", body });
     await viewInventory();
-  });
+  }, panel);
 }
 
 function renderItems(panel, itemsData, stockData) {
@@ -1395,7 +1397,7 @@ function renderItems(panel, itemsData, stockData) {
     await api("/api/inventory/items", { method: "POST", body });
     window.location.hash = "#/inventory?tab=items";
     await viewInventory();
-  });
+  }, panel);
   panel.querySelectorAll("[data-edit-item]").forEach((btn) => {
     btn.addEventListener("click", async () => {
       const row = rows.find((item) => item.id === btn.dataset.editItem);
@@ -1465,12 +1467,12 @@ function renderAllocations(panel, allocData, itemsData) {
     body.qty = Number(body.qty);
     await api("/api/inventory/allocations", { method: "POST", body });
     await viewInventory();
-  });
+  }, panel);
 }
 
-export async function viewAccounting() {
+export async function viewAccounting(main = ctx.main) {
   if (!isOwner()) {
-    ctx.main.innerHTML = emptyState("Owner only", "Income, expenses and profit reports are only available to the owner.");
+    main.innerHTML = emptyState("Owner only", "Income, expenses and profit reports are only available to the owner.");
     return;
   }
   const tab = currentTab("expenses");
@@ -1492,12 +1494,12 @@ export async function viewAccounting() {
     { id: "cashflow", label: "Cash flow" },
     { id: "profit", label: "Event profit" }
   ];
-  ctx.main.innerHTML = `
+  main.innerHTML = `
     ${pageHead("Accounting", "Accounting", "Income, expenses, cash and per-event profit. Sample figures are kept separate.")}
     ${tabBar("accounting", tabs, tab)}
     <div data-acc-panel></div>
   `;
-  const panel = ctx.main.querySelector("[data-acc-panel]");
+  const panel = main.querySelector("[data-acc-panel]");
   if (tab === "expenses") renderExpenses(panel, expenses);
   else if (tab === "petty") renderPetty(panel, petty);
   else if (tab === "pnl") renderPnl(panel, pnl, range);
@@ -1554,7 +1556,7 @@ function renderExpenses(panel, data) {
     if (!(await confirmRealWrite())) return;
     await api("/api/expenses", { method: "POST", body });
     await viewAccounting();
-  });
+  }, panel);
   panel.querySelectorAll("[data-void-ex]").forEach((btn) => {
     btn.addEventListener("click", async () => {
       const ok = await confirmAction("Void this expense?", "It will be excluded from totals.");
@@ -1594,14 +1596,24 @@ function renderPetty(panel, data) {
     </table></div>` : emptyState("No petty cash yet", "Cash in and cash out for small purchases is logged here.")}
   `;
   formFrom("[data-add-petty]", async (formData) => {
+    if (!(await confirmRealWrite())) return;
     await api("/api/petty-cash", { method: "POST", body: Object.fromEntries(formData) });
     window.location.hash = "#/accounting?tab=petty";
     await viewAccounting();
-  });
+  }, panel);
+}
+
+function lastDayOfMonth(ym) {
+  const [year, month] = String(ym || "").split("-");
+  if (!year || !month) return "";
+  const last = new Date(Number(year), Number(month), 0).getDate();
+  return `${year}-${month}-${String(last).padStart(2, "0")}`;
 }
 
 function renderPnl(panel, data, range) {
-  const monthVal = String(data.from || "").slice(0, 7);
+  const monthHint = String(data.from || "").slice(0, 7);
+  const fullMonth = data.from && data.to && String(data.from).endsWith("-01") && data.to === lastDayOfMonth(monthHint);
+  const monthVal = fullMonth ? monthHint : "";
   panel.innerHTML = `
     <div class="filter-tabs">${rangeLinks("accounting", "pnl", range)}</div>
     <form class="toolbar" data-pnl-period>
@@ -1683,7 +1695,7 @@ function renderEventProfit(panel, data) {
 }
 
 
-export async function viewHr() {
+export async function viewHr(main = ctx.main) {
   const tab = currentTab(role() === "staff" ? "leave" : "staff");
   if (role() === "staff" && tab !== "leave") {
     window.location.hash = "#/hr?tab=leave";
@@ -1703,12 +1715,12 @@ export async function viewHr() {
     (role() === "owner" && tab === "payroll") ? api("/api/hr/payroll") : Promise.resolve(loading.payroll),
     (isOwner() && tab === "advances") ? api("/api/hr/advances") : Promise.resolve(loading.advances)
   ]);
-  ctx.main.innerHTML = `
+  main.innerHTML = `
     ${pageHead("People", "HR", role() === "staff" ? "Request time off and see the status of your leave." : "Staff records, leave, advances and payroll summaries.")}
     ${tabBar("hr", tabs, tab)}
     <div data-hr-panel></div>
   `;
-  const panel = ctx.main.querySelector("[data-hr-panel]");
+  const panel = main.querySelector("[data-hr-panel]");
   if (tab === "staff") renderHrStaff(panel, staff);
   else if (tab === "leave") renderLeave(panel, leave, staff);
   else if (tab === "payroll") renderPayroll(panel, payroll);
@@ -1771,7 +1783,7 @@ function renderLeave(panel, data, staffData) {
     }
     window.location.hash = "#/hr?tab=leave";
     await viewHr();
-  });
+  }, panel);
   panel.querySelectorAll("[data-leave]").forEach((btn) => {
     btn.addEventListener("click", async () => {
       const ok = await confirmAction(`${btn.dataset.status === "approved" ? "Approve" : "Deny"} this leave request?`);
@@ -1830,10 +1842,11 @@ function renderPayroll(panel, data) {
     `).join("") : emptyState("No payroll periods", "Create a date range to compute days worked, advances and net pay.")}
   `;
   formFrom("[data-add-pay]", async (formData) => {
+    if (!(await confirmRealWrite())) return;
     await api("/api/hr/payroll", { method: "POST", body: Object.fromEntries(formData) });
     window.location.hash = "#/hr?tab=payroll";
     await viewHr();
-  });
+  }, panel);
   panel.querySelectorAll("[data-pay]").forEach((btn) => {
     btn.addEventListener("click", async () => {
       const ok = await confirmAction(`Mark this payroll as ${btn.dataset.status}?`, btn.dataset.status === "paid" ? "A paid period cannot be changed later." : "");
@@ -1898,15 +1911,19 @@ function renderAdvances(panel, data, staffData) {
     </table></div>` : emptyState("No advances", "Salary advances will be deducted from a later payroll.")}
   `;
   formFrom("[data-add-adv]", async (formData) => {
+    if (!(await confirmRealWrite())) return;
     await api("/api/hr/advances", { method: "POST", body: Object.fromEntries(formData) });
     window.location.hash = "#/hr?tab=advances";
     await viewHr();
-  });
+  }, panel);
 }
 
-export async function viewOpsReports() {
+export async function viewOpsReports(main = ctx.main) {
   const range = params().get("range") || "monthly";
-  const summary = await api(`/api/reports/summary?range=${encodeURIComponent(range)}`);
+  const from = params().get("from") || "";
+  const to = params().get("to") || "";
+  const periodQuery = `range=${encodeURIComponent(range)}${from ? `&from=${encodeURIComponent(from)}` : ""}${to ? `&to=${encodeURIComponent(to)}` : ""}`;
+  const summary = await api(`/api/reports/summary?${periodQuery}`);
   const isOwn = isOwner();
   const tables = [
     { id: "events", label: "Events" },
@@ -1923,9 +1940,15 @@ export async function viewOpsReports() {
     { id: "housekeeping", label: "Housekeeping" }
   ];
   const kpis = { events: summary.events, requests: summary.requests, collected: summary.income ?? summary.collected, expenses: summary.expenses, ...(summary.kpis || {}) };
-  ctx.main.innerHTML = `
+  main.innerHTML = `
     ${pageHead("Reports", "Reports", "Daily, weekly and monthly summaries, plus CSV and Excel downloads.")}
     <div class="filter-tabs">${rangeLinks("reports", "", range).replace(/tab=&/g, "")}</div>
+    <form class="toolbar" data-report-period>
+      <div class="field"><label for="rep-month">Month</label><input id="rep-month" name="month" type="month" value="${esc((summary.from && summary.to && String(summary.from).endsWith("-01") && summary.to === lastDayOfMonth(String(summary.from).slice(0, 7))) ? String(summary.from).slice(0, 7) : "")}"></div>
+      <div class="field"><label for="rep-from">From</label><input id="rep-from" name="from" type="date" value="${esc(summary.from || "")}"></div>
+      <div class="field"><label for="rep-to">To</label><input id="rep-to" name="to" type="date" value="${esc(summary.to || "")}"></div>
+      <button class="btn btn-solid" type="submit">Apply</button>
+    </form>
     <p class="muted">${esc(summary.from || "")} to ${esc(summary.to || "")}</p>
     <div class="card-grid cols-4">
       <article class="portal-card"><p class="kicker">Events</p><p class="stat">${esc(kpis.events ?? kpis.eventCount ?? "—")}</p></article>
@@ -1962,13 +1985,13 @@ export async function viewOpsReports() {
       <p class="muted">A live Sheets mirror is not required. Use the CSV or Excel files above, or a later Apps Script that sends a key in a header, never in the URL. Keep any key in Script Properties only.</p>
     </details>` : ""}
   `;
-  ctx.main.querySelectorAll("[data-download]").forEach((btn) => {
+  main.querySelectorAll("[data-download]").forEach((btn) => {
     btn.addEventListener("click", async () => {
       try { await ctx.downloadReport(btn.dataset.download, btn.dataset.format); }
       catch (err) { await openModal({ title: "Download failed", message: err.message, confirmLabel: "OK", cancelLabel: "Close" }); }
     });
   });
-  ctx.main.querySelector("[data-print-summary]")?.addEventListener("click", () => {
+  main.querySelector("[data-print-summary]")?.addEventListener("click", () => {
     printDocument({
       title: "Period summary",
       kicker: `${summary.from || ""} to ${summary.to || ""} (${range})`,
@@ -1980,15 +2003,34 @@ export async function viewOpsReports() {
       ]
     });
   });
+  const form = main.querySelector("[data-report-period]");
+  if (form) {
+    form.addEventListener("change", (event) => {
+      if (event.target && event.target.name === "month" && event.target.value) {
+        form.from.value = `${event.target.value}-01`;
+        form.to.value = lastDayOfMonth(event.target.value);
+      }
+    });
+    form.addEventListener("submit", (event) => {
+      event.preventDefault();
+      const nextFrom = String(form.from.value || "").trim();
+      const nextTo = String(form.to.value || "").trim();
+      const next = new URLSearchParams();
+      next.set("range", nextFrom && nextTo ? "custom" : (range || "monthly"));
+      if (nextFrom) next.set("from", nextFrom);
+      if (nextTo) next.set("to", nextTo);
+      window.location.hash = `#/reports?${next.toString()}`;
+    });
+  }
 }
 
-export async function viewSettings() {
+export async function viewSettings(main = ctx.main) {
   if (!isOwner()) {
-    ctx.main.innerHTML = emptyState("Owner only", "Settings are only available to the owner.");
+    main.innerHTML = emptyState("Owner only", "Settings are only available to the owner.");
     return;
   }
   const sample = await api("/api/sample").catch(() => ({ hasSample: false }));
-  ctx.main.innerHTML = `
+  main.innerHTML = `
     ${pageHead("Workspace", "Settings", "Account and sample-data tools.")}
     <article class="portal-card">
       <p class="kicker">Sample data</p>
@@ -2003,7 +2045,7 @@ export async function viewSettings() {
         : `<p class="muted">There is no sample data in this workspace.</p>`}
     </article>
   `;
-  const form = ctx.main.querySelector("[data-remove-sample]");
+  const form = main.querySelector("[data-remove-sample]");
   if (!form) return;
   form.addEventListener("submit", async (event) => {
     event.preventDefault();
