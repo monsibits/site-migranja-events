@@ -551,6 +551,7 @@ async function bindModuleContext() {
   setModuleContext({
     main: mainEl,
     currentUser,
+    user: currentUser,
     users: usersCache,
     api,
     formatDate,
@@ -614,6 +615,25 @@ async function renderRoute() {
     mainEl.innerHTML = `<div class="portal-card"><h1>Could not load this page</h1><p class="muted">${escapeHtml(err.message || "Please try again.")}</p><p><button class="btn btn-solid" type="button" data-retry>Try again</button></p></div>`;
     mainEl.querySelector("[data-retry]")?.addEventListener("click", () => renderRoute());
   }
+}
+
+
+function clockCard(punch, extra = "") {
+  const open = punch && punch.time_in && !punch.time_out;
+  const status = !punch
+    ? "You have not timed in today."
+    : open
+      ? `Timed in at ${punch.time_in}.`
+      : `Shift closed: ${punch.time_in}–${punch.time_out}.`;
+  const action = open ? "Time out" : "Time in";
+  return `<article class="portal-card clock-card">
+    <div>
+      <p class="kicker">Today</p>
+      <h2>Time clock</h2>
+      <p>${status}${extra ? ` ${extra}` : ""}</p>
+    </div>
+    <button class="btn btn-solid" type="button" data-action="clock">${action}</button>
+  </article>`;
 }
 
 async function viewDashboard() {
@@ -707,7 +727,8 @@ function eventForm(event) {
       ${currentUser.role === "owner" ? `<div class="field"><label for="ev-fee-${esc(sid)}">Fee</label><input id="ev-fee-${esc(sid)}" name="fee" type="number" min="0" value="${esc(ev.fee ?? "")}"></div>
         <div class="field"><label for="ev-deposit-${esc(sid)}">Deposit</label><input id="ev-deposit-${esc(sid)}" name="deposit" type="number" min="0" value="${esc(ev.deposit ?? "")}"></div>
         ${event ? `<div class="field"><p class="kicker">Contract total</p><p>${ev.contract_total != null && ev.contract_total !== "" ? formatMoney(ev.contract_total) : "—"}</p></div>
-        <div class="field"><p class="kicker">Balance</p><p>${ev.fee != null && ev.fee !== "" ? formatMoney((Number(ev.fee) || 0) - (Number(ev.deposit) || 0)) : "TBD"}</p></div>
+        <div class="field"><p class="kicker">Collected</p><p>${ev.collected != null && ev.collected !== "" ? formatMoney(ev.collected) : (ev.deposit != null && ev.deposit !== "" ? formatMoney(ev.deposit) : "—")}</p></div>
+        <div class="field"><p class="kicker">Balance</p><p>${ev.balance != null && ev.balance !== "" ? formatMoney(ev.balance) : (ev.contract_total != null || ev.fee != null ? formatMoney((Number(ev.contract_total ?? ev.fee) || 0) - (Number(ev.collected ?? ev.deposit) || 0)) : "TBD")}</p></div>
         <p><a href="#/events?sheet=${esc(ev.id)}">Open event sheet</a></p>` : ""}` : ""}
       <div data-form-error></div>
       <div class="row-actions">
@@ -972,26 +993,28 @@ async function viewFinances() {
     <tr>
       <td>${esc(formatDate(event.date, { month: "short" }))}</td>
       <td>${esc(event.client || "")} · ${esc(event.title || "")}${sampleMark(event, event.client)}</td>
-      <td>${formatMoney(event.fee)}</td>
-      <td>${formatMoney(event.deposit)}</td>
-      <td>${event.fee ? formatMoney((event.fee || 0) - (event.deposit || 0)) : "TBD"}</td>
+      <td>${formatMoney(event.contract_total ?? event.fee)}</td>
+      <td>${formatMoney(event.collected ?? event.deposit)}</td>
+      <td>${formatMoney(event.balance)}</td>
     </tr>
   `).join("");
-  const totals = data.totals || { fees: 0, deposits: 0, balance: 0 };
-  const sampleTotals = data.sampleTotals || { fees: 0, deposits: 0, balance: 0 };
+  const totals = data.totals || { fees: 0, collected: 0, deposits: 0, balance: 0 };
+  const sampleTotals = data.sampleTotals || { fees: 0, collected: 0, deposits: 0, balance: 0 };
+  const collected = totals.collected ?? totals.deposits;
+  const sampleCollected = sampleTotals.collected ?? sampleTotals.deposits;
   mainEl.innerHTML = `
-    <div class="page-head"><div><p class="kicker">Owner only</p><h1>Event revenue and deposits</h1></div></div>
-    <p class="muted">Totals below are for real events only. Sample events are listed and totaled separately.</p>
+    <div class="page-head"><div><p class="kicker">Owner only</p><h1>Event revenue and balances</h1></div></div>
+    <p class="muted">Balance is the contract total minus payments received. Totals below are for real events only. Sample events are listed and totaled separately.</p>
     <div class="card-grid cols-3">
-      <article class="portal-card"><p class="kicker">Fees</p><p class="stat">${formatMoney(totals.fees)}</p></article>
-      <article class="portal-card"><p class="kicker">Deposits</p><p class="stat">${formatMoney(totals.deposits)}</p></article>
+      <article class="portal-card"><p class="kicker">Contract total</p><p class="stat">${formatMoney(totals.fees)}</p></article>
+      <article class="portal-card"><p class="kicker">Collected</p><p class="stat">${formatMoney(collected)}</p></article>
       <article class="portal-card"><p class="kicker">Balance</p><p class="stat">${formatMoney(totals.balance)}</p></article>
     </div>
-    ${hasSample ? `<p class="muted">Sample totals: ${formatMoney(sampleTotals.fees)} fees · ${formatMoney(sampleTotals.deposits)} deposits · ${formatMoney(sampleTotals.balance)} balance. These are not included in the cards above.</p>` : ""}
+    ${hasSample ? `<p class="muted">Sample totals: ${formatMoney(sampleTotals.fees)} contract · ${formatMoney(sampleCollected)} collected · ${formatMoney(sampleTotals.balance)} balance. These are not included in the cards above.</p>` : ""}
     <div class="table-wrap stack-gap">
       <table class="data">
-        <thead><tr><th>Date</th><th>Event</th><th>Fee</th><th>Deposit</th><th>Balance</th></tr></thead>
-        <tbody>${rows || `<tr><td colspan="5">No fee figures yet.</td></tr>`}</tbody>
+        <thead><tr><th>Date</th><th>Event</th><th>Contract</th><th>Collected</th><th>Balance</th></tr></thead>
+        <tbody>${rows || `<tr><td colspan="5">No figures yet.</td></tr>`}</tbody>
       </table>
     </div>
   `;
@@ -1003,10 +1026,35 @@ async function viewReports() {
     { id: "requests", label: "Booking requests" },
     { id: "attendance", label: "Attendance" }
   ];
-  if (currentUser.role === "owner") tables.push({ id: "finances", label: "Finances (real events only)" });
+  if (currentUser.role === "owner") {
+    tables.push(
+      { id: "finances", label: "Finances" },
+      { id: "leads", label: "Leads" },
+      { id: "quotes", label: "Quotes" },
+      { id: "payments", label: "Payments" },
+      { id: "expenses", label: "Expenses" },
+      { id: "inventory", label: "Inventory" },
+      { id: "housekeeping", label: "Housekeeping" }
+    );
+  } else if (currentUser.role === "admin") {
+    tables.push({ id: "leads", label: "Leads" }, { id: "inventory", label: "Inventory" }, { id: "housekeeping", label: "Housekeeping" });
+  }
+  const eventsData = await api("/api/events?limit=200").catch(() => ({ events: [] }));
+  const events = eventsData.events || [];
+  const hasSample = events.some(isSample);
+  const preview = events.slice(0, 40).map((event) => `
+    <tr>
+      <td>${esc(formatDate(event.date, { month: "short" }))}</td>
+      <td>${esc(event.client || event.title || "")}${sampleMark(event, event.client)}</td>
+      <td>${esc(event.venue || "—")}</td>
+      <td><span class="chip">${esc(event.status || "")}</span></td>
+    </tr>
+  `).join("");
   mainEl.innerHTML = `
     <div class="page-head"><div><p class="kicker">Exports</p><h1>Reports</h1></div></div>
-    <p class="muted">Download a spreadsheet of current records. Sample rows are left out.</p>
+    <p class="muted">${hasSample
+      ? "Sample rows are included in downloads and marked SAMPLE, so you can see the demo. A Sample column is added to the file. They come out of the files once sample data is removed."
+      : "Download a spreadsheet of current records."}</p>
     ${currentUser.role === "owner" ? `<p class="muted">For a live Google Sheet later, an Apps Script can pull the same files using a key stored in Script Properties, not in the sheet itself.</p>` : ""}
     <div class="stack-list">
       ${tables.map((item) => `
@@ -1017,6 +1065,11 @@ async function viewReports() {
         </article>
       `).join("")}
     </div>
+    <h2 class="stack-gap">Events in this report</h2>
+    ${events.length ? `<div class="table-wrap"><table class="data">
+      <thead><tr><th>Date</th><th>Client</th><th>Venue</th><th>Status</th></tr></thead>
+      <tbody>${preview}</tbody>
+    </table></div>` : `<p class="muted">No events to list yet.</p>`}
     <p class="form-error" data-report-error hidden></p>
   `;
 }

@@ -15,6 +15,8 @@ const ctx = {
 
 export function setModuleContext(next) {
   Object.assign(ctx, next);
+  if (next && next.currentUser && !next.user) ctx.user = next.currentUser;
+  if (next && next.user && !next.currentUser) ctx.currentUser = next.user;
 }
 
 function role() {
@@ -76,6 +78,39 @@ function showError(box, message) {
   box.hidden = false;
   box.classList.add("form-error");
   box.textContent = message;
+}
+
+function showToast(message) {
+  let el = document.querySelector(".mg-toast");
+  if (!el) {
+    el = document.createElement("div");
+    el.className = "mg-toast";
+    el.setAttribute("role", "status");
+    document.body.append(el);
+  }
+  el.textContent = message;
+  el.hidden = false;
+  el.classList.add("is-visible");
+  clearTimeout(showToast._t);
+  showToast._t = setTimeout(() => {
+    el.classList.remove("is-visible");
+  }, 2800);
+}
+
+function friendlyStatus(value) {
+  const key = String(value || "").toLowerCase().replace(/\s+/g, "_");
+  const labels = {
+    pending: "Pending",
+    in_progress: "In progress",
+    done: "Done",
+    completed: "Done",
+    failed: "Needs another pass",
+    cancelled: "Cancelled",
+    canceled: "Cancelled",
+    open: "Open",
+    closed: "Closed"
+  };
+  return labels[key] || (value ? String(value).replace(/_/g, " ") : "—");
 }
 
 export function openModal({ title, message, confirmLabel = "OK", cancelLabel = "Cancel", danger = false, input = null, fields = null }) {
@@ -399,7 +434,7 @@ function renderPipeline(panel, data) {
           <td>${esc(row.date || "")}</td>
           <td>${esc(row.client || row.client_name || "")}${sampleChip(row)}</td>
           <td>${money(row.contract_total)}</td>
-          <td>${money(row.paid)}</td>
+          <td>${money(row.collected ?? row.paid)}</td>
           <td>${money(row.balance)}</td>
         </tr>`).join("")}</tbody>
       </table></div>` : ""}
@@ -420,18 +455,44 @@ function renderClients(panel, data) {
         <button class="btn btn-solid" type="submit">Save client</button>
       </form></details>` : ""}
     ${rows.length ? `<div class="table-wrap"><table class="data">
-      <thead><tr><th>Name</th><th>Contact</th><th>Email</th><th>Company</th></tr></thead>
+      <thead><tr><th>Name</th><th>Contact</th><th>Email</th><th>Company</th><th></th></tr></thead>
       <tbody>${rows.map((row) => `<tr>
         <td>${esc(row.name)}${sampleChip(row)}</td>
         <td>${esc(row.contact || "—")}</td>
         <td>${esc(row.email || "—")}</td>
         <td>${esc(row.company || "—")}</td>
+        <td class="row-actions">${canWrite("sales") ? `<button class="btn btn-ghost" type="button" data-edit-client="${esc(row.id)}">Edit</button>` : ""}</td>
       </tr>`).join("")}</tbody>
     </table></div>` : emptyState("No clients yet", "Add a client to start a quote or contract.")}
   `;
   formFrom("[data-add-client]", async (formData) => {
     await api("/api/clients", { method: "POST", body: Object.fromEntries(formData) });
     await viewSales();
+  });
+  panel.querySelectorAll("[data-edit-client]").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      const row = rows.find((item) => item.id === btn.dataset.editClient);
+      if (!row) return;
+      const result = await openModal({
+        title: "Edit client",
+        confirmLabel: "Save",
+        fields: [
+          { name: "name", label: "Name", value: row.name || "", required: true },
+          { name: "contact", label: "Contact", value: row.contact || "" },
+          { name: "email", label: "Email", value: row.email || "", type: "email" },
+          { name: "company", label: "Company", value: row.company || "" },
+          { name: "notes", label: "Notes", value: row.notes || "", type: "textarea" }
+        ]
+      });
+      if (!result) return;
+      try {
+        await api(`/api/clients/${row.id}`, { method: "PATCH", body: result });
+        showToast("Client saved.");
+        await viewSales();
+      } catch (err) {
+        await openModal({ title: "Could not save", message: err.message, confirmLabel: "OK", cancelLabel: "Close" });
+      }
+    });
   });
 }
 
@@ -458,7 +519,7 @@ function renderLeads(panel, data) {
         <td>${esc(row.name)}${sampleChip(row)}<br><span class="muted tiny">${esc(row.contact || "")}</span></td>
         <td>${esc([row.event_date, row.venue, row.type].filter(Boolean).join(" · ") || "—")}</td>
         <td>${canWrite("sales") ? `<select data-lead-stage data-id="${esc(row.id)}">${stages.map((s) => `<option ${row.status === s ? "selected" : ""}>${s}</option>`).join("")}</select>` : esc(row.status)}</td>
-        <td class="row-actions">${isOwner() ? `<a class="btn btn-ghost" href="#/sales?tab=quotes&lead=${esc(row.id)}">Quote</a>` : ""}</td>
+        <td class="row-actions">${canWrite("sales") ? `<button class="btn btn-ghost" type="button" data-edit-lead="${esc(row.id)}">Edit</button>` : ""}${isOwner() ? `<a class="btn btn-ghost" href="#/sales?tab=quotes&lead=${esc(row.id)}">Quote</a>` : ""}</td>
       </tr>`).join("")}</tbody>
     </table></div>` : emptyState("No leads yet", "New inquiries will show up here in the pipeline.")}
   `;
@@ -475,6 +536,35 @@ function renderLeads(panel, data) {
       } catch (err) {
         await openModal({ title: "Could not update", message: err.message, confirmLabel: "OK", cancelLabel: "Close" });
         await viewSales();
+      }
+    });
+  });
+  panel.querySelectorAll("[data-edit-lead]").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      const row = rows.find((item) => item.id === btn.dataset.editLead);
+      if (!row) return;
+      const result = await openModal({
+        title: "Edit lead",
+        confirmLabel: "Save",
+        fields: [
+          { name: "name", label: "Name", value: row.name || "", required: true },
+          { name: "contact", label: "Contact", value: row.contact || "" },
+          { name: "source", label: "Source", value: row.source || "" },
+          { name: "type", label: "Event type", value: row.type || "" },
+          { name: "event_date", label: "Event date", value: row.event_date || "", type: "date" },
+          { name: "venue", label: "Venue", value: row.venue || "" },
+          { name: "pax", label: "Pax", value: row.pax ?? "", type: "number" },
+          { name: "notes", label: "Notes", value: row.notes || "", type: "textarea" }
+        ]
+      });
+      if (!result) return;
+      if (result.pax === "") result.pax = null;
+      try {
+        await api(`/api/leads/${row.id}`, { method: "PATCH", body: result });
+        showToast("Lead saved.");
+        await viewSales();
+      } catch (err) {
+        await openModal({ title: "Could not save", message: err.message, confirmLabel: "OK", cancelLabel: "Close" });
       }
     });
   });
@@ -568,6 +658,7 @@ function renderQuotes(panel, data) {
         <td>${esc(row.status || "")}</td>
         ${isOwner() ? `<td>${money(row.total)}</td>` : ""}
         <td class="row-actions">
+          ${isOwner() && row.status !== "accepted" ? `<button class="btn btn-ghost" type="button" data-edit-quote="${esc(row.id)}">Edit</button>` : ""}
           <button class="btn btn-ghost" type="button" data-print-quote="${esc(row.id)}">Print</button>
           ${isOwner() && row.status !== "accepted" && row.status !== "rejected" ? `<button class="btn btn-solid" type="button" data-accept-quote="${esc(row.id)}">Accept</button>` : ""}
         </td>
@@ -605,6 +696,34 @@ function renderQuotes(panel, data) {
     });
   });
 }
+  panel.querySelectorAll("[data-edit-quote]").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      const row = rows.find((item) => item.id === btn.dataset.editQuote);
+      if (!row) return;
+      const result = await openModal({
+        title: "Edit quote",
+        confirmLabel: "Save",
+        fields: [
+          { name: "client_name", label: "Client name", value: row.client_name || "", required: true },
+          { name: "event_date", label: "Event date", value: row.event_date || "", type: "date" },
+          { name: "venue", label: "Venue", value: row.venue || "" },
+          { name: "discount", label: "Discount", value: row.discount ?? 0, type: "number" },
+          { name: "valid_until", label: "Valid until", value: row.valid_until || "", type: "date" },
+          { name: "notes", label: "Notes", value: row.notes || "", type: "textarea" }
+        ]
+      });
+      if (!result) return;
+      try {
+        await api(`/api/quotes/${row.id}`, { method: "PATCH", body: result });
+        showToast("Quote saved.");
+        await viewSales();
+      } catch (err) {
+        await openModal({ title: "Could not save", message: err.message, confirmLabel: "OK", cancelLabel: "Close" });
+      }
+    });
+  });
+
+
 
 function renderContracts(panel, data) {
   const rows = data.contracts.contracts || [];
@@ -630,7 +749,7 @@ function renderContracts(panel, data) {
         <td>${esc([row.event_date, row.venue].filter(Boolean).join(" · ") || "—")}</td>
         <td>${esc(row.status || "")}</td>
         ${isOwner() ? `<td>${money(row.total)}</td>` : ""}
-        <td class="row-actions"><button class="btn btn-ghost" type="button" data-print-contract="${esc(row.id)}">Print</button></td>
+        <td class="row-actions">${isOwner() ? `<button class="btn btn-ghost" type="button" data-edit-contract="${esc(row.id)}">Edit</button>` : ""}<button class="btn btn-ghost" type="button" data-print-contract="${esc(row.id)}">Print</button></td>
       </tr>`).join("")}</tbody>
     </table></div>` : emptyState("No contracts yet", "Accepted quotes and new bookings will appear here.")}
   `;
@@ -648,6 +767,35 @@ function renderContracts(panel, data) {
     });
   });
 }
+  panel.querySelectorAll("[data-edit-contract]").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      const row = rows.find((item) => item.id === btn.dataset.editContract);
+      if (!row) return;
+      const result = await openModal({
+        title: "Edit contract",
+        confirmLabel: "Save",
+        fields: [
+          { name: "client_name", label: "Client name", value: row.client_name || "", required: true },
+          { name: "event_date", label: "Event date", value: row.event_date || "", type: "date" },
+          { name: "venue", label: "Venue", value: row.venue || "" },
+          { name: "total", label: "Total", value: row.total ?? "", type: "number" },
+          { name: "deposit_due", label: "Reservation due", value: row.deposit_due ?? "", type: "number" },
+          { name: "status", label: "Status", value: row.status || "draft" },
+          { name: "terms", label: "Terms", value: row.terms || "", type: "textarea" }
+        ]
+      });
+      if (!result) return;
+      try {
+        await api(`/api/contracts/${row.id}`, { method: "PATCH", body: result });
+        showToast("Contract saved.");
+        await viewSales();
+      } catch (err) {
+        await openModal({ title: "Could not save", message: err.message, confirmLabel: "OK", cancelLabel: "Close" });
+      }
+    });
+  });
+
+
 
 function renderPayments(panel, data) {
   const rows = data.payments.payments || [];
@@ -731,7 +879,7 @@ export async function viewEventSheet(eventId) {
     <p><a href="#/events">Back to events</a></p>
     ${balance ? `<div class="card-grid cols-3">
       <article class="portal-card"><p class="kicker">Contract total</p><p class="stat">${money(balance.contract_total)}</p></article>
-      <article class="portal-card"><p class="kicker">Paid</p><p class="stat">${money(balance.paid)}</p></article>
+      <article class="portal-card"><p class="kicker">Paid</p><p class="stat">${money(balance.collected ?? ev.deposit ?? balance.paid)}</p></article>
       <article class="portal-card"><p class="kicker">Balance</p><p class="stat">${money(balance.balance)}</p></article>
     </div>` : ""}
     <form class="portal-form portal-card" data-save-sheet>
@@ -819,11 +967,11 @@ function renderHkJobs(panel, jobsData, areasData, templatesData) {
       <article class="portal-card hk-job">
         <div class="hk-job__head">
           <div>
-            <p class="kicker">${esc(job.kind || "")} · ${esc(job.status || "")}${sampleChip(job)}</p>
+            <p class="kicker">${esc(job.kind || "")} · ${esc(friendlyStatus(job.status))}${sampleChip(job)}</p>
             <h2>${esc(job.title)}</h2>
             <p class="muted tiny">${esc([job.event_client || job.event_title, job.event_date, job.area_name, job.assigned_name, job.due ? `Due ${job.due}` : ""].filter(Boolean).join(" · ") || "")}</p>
           </div>
-          <select data-job-status data-id="${esc(job.id)}">${statuses.map((s) => `<option ${job.status === s ? "selected" : ""}>${s}</option>`).join("")}</select>
+          <select data-job-status data-id="${esc(job.id)}">${statuses.map((s) => `<option value="${esc(s)}" ${job.status === s ? "selected" : ""}>${esc(friendlyStatus(s))}</option>`).join("")}</select>
         </div>
         ${(job.items || []).length ? `<ul class="check-list">${job.items.map((item) => `
           <li><label><input type="checkbox" data-hk-item="${esc(item.id)}" ${item.done ? "checked" : ""}> ${esc(item.label)}</label></li>`).join("")}</ul>` : "<p class='muted tiny'>No checklist items.</p>"}
@@ -841,8 +989,19 @@ function renderHkJobs(panel, jobsData, areasData, templatesData) {
   });
   panel.querySelectorAll("[data-job-status]").forEach((select) => {
     select.addEventListener("change", async () => {
-      try { await api(`/api/hk/jobs/${select.dataset.id}`, { method: "PATCH", body: { status: select.value } }); }
-      catch (err) { await openModal({ title: "Could not update", message: err.message, confirmLabel: "OK", cancelLabel: "Close" }); await viewHousekeeping(); }
+      try {
+        await api(`/api/hk/jobs/${select.dataset.id}`, { method: "PATCH", body: { status: select.value } });
+        const kicker = select.closest(".hk-job") && select.closest(".hk-job").querySelector(".kicker");
+        if (kicker) {
+          const kind = (kicker.textContent.split("·")[0] || "").trim();
+          const job = jobs.find((row) => row.id === select.dataset.id) || {};
+          kicker.innerHTML = `${esc(kind)} · ${esc(friendlyStatus(select.value))}${sampleChip(job)}`;
+        }
+        showToast("Job status updated.");
+      } catch (err) {
+        await openModal({ title: "Could not update", message: err.message, confirmLabel: "OK", cancelLabel: "Close" });
+        await viewHousekeeping();
+      }
     });
   });
   panel.querySelectorAll("[data-hk-item]").forEach((box) => {
@@ -948,12 +1107,13 @@ function renderTickets(panel, ticketsData, areasData) {
 
 export async function viewInventory() {
   const tab = currentTab("stock");
-  const [stock, items, moves, allocations, suppliers] = await Promise.all([
+  const [stock, items, moves, allocations, suppliers, orders] = await Promise.all([
     api("/api/inventory/stock"),
     api("/api/inventory/items"),
     api("/api/inventory/moves"),
     api("/api/inventory/allocations"),
-    api("/api/suppliers").catch(() => ({ suppliers: [] }))
+    api("/api/suppliers").catch(() => ({ suppliers: [] })),
+    isOwner() ? api("/api/purchase-orders").catch(() => ({ orders: [] })) : Promise.resolve({ orders: [] })
   ]);
   const tabs = [
     { id: "stock", label: "Stock" },
@@ -961,6 +1121,7 @@ export async function viewInventory() {
     { id: "moves", label: "Movements" },
     { id: "events", label: "Event use" }
   ];
+  if (isOwner()) tabs.push({ id: "po", label: "Purchase orders" });
   ctx.main.innerHTML = `
     ${pageHead("Inventory", "Inventory", "Stock on hand, movements, reorder alerts and per-event use.")}
     ${tabBar("inventory", tabs, tab)}
@@ -970,7 +1131,57 @@ export async function viewInventory() {
   if (tab === "stock") renderStock(panel, stock, items);
   else if (tab === "items") renderItems(panel, items, stock);
   else if (tab === "moves") renderMoves(panel, moves, items);
+  else if (tab === "po" && isOwner()) renderPOs(panel, orders, suppliers, items);
   else renderAllocations(panel, allocations, items);
+}
+
+function renderPOs(panel, ordersData, suppliersData, itemsData) {
+  const orders = (ordersData && ordersData.orders) || [];
+  const suppliers = (suppliersData && suppliersData.suppliers) || [];
+  const items = (itemsData && itemsData.items) || [];
+  panel.innerHTML = `
+    <details class="portal-card"><summary>New purchase order</summary>
+      <form class="portal-form" data-add-po>
+        <div class="field"><label for="po-supplier">Supplier</label><select id="po-supplier" name="supplier_id"><option value="">None</option>${optionList(suppliers, "", (s) => s.name)}</select></div>
+        <div class="field"><label for="po-expected">Expected on</label><input id="po-expected" name="expected_at" type="date"></div>
+        <div class="field"><label for="po-item">Item</label><select id="po-item" name="item_id"><option value="">Other</option>${optionList(items, "", (i) => i.name)}</select></div>
+        <div class="field"><label for="po-label">Line label</label><input id="po-label" name="label" placeholder="If not picking an item"></div>
+        <div class="field"><label for="po-qty">Quantity</label><input id="po-qty" name="qty" type="number" min="1" value="1" required></div>
+        <div class="field"><label for="po-cost">Unit cost</label><input id="po-cost" name="unit_cost" type="number" min="0" value="0"></div>
+        <div class="field"><label for="po-notes">Notes</label><textarea id="po-notes" name="notes" rows="2"></textarea></div>
+        <div data-form-error></div>
+        <button class="btn btn-solid" type="submit">Save purchase order</button>
+      </form></details>
+    ${orders.length ? `<div class="table-wrap"><table class="data">
+      <thead><tr><th>Number</th><th>Supplier</th><th>Status</th><th>Total</th><th>Expected</th></tr></thead>
+      <tbody>${orders.map((row) => `<tr>
+        <td>${esc(row.number || "")}${sampleChip(row)}</td>
+        <td>${esc(row.supplier_name || "—")}</td>
+        <td>${esc(friendlyStatus(row.status))}</td>
+        <td>${money(row.total)}</td>
+        <td>${esc(row.expected_at || "—")}</td>
+      </tr>`).join("")}</tbody>
+    </table></div>` : emptyState("No purchase orders yet", "Create a PO to order linens, supplies or equipment.")}
+  `;
+  formFrom("[data-add-po]", async (formData) => {
+    const raw = Object.fromEntries(formData);
+    const item = items.find((row) => row.id === raw.item_id);
+    const body = {
+      supplier_id: raw.supplier_id || null,
+      expected_at: raw.expected_at || null,
+      notes: raw.notes || "",
+      lines: [{
+        item_id: raw.item_id || null,
+        label: raw.label || (item && item.name) || "Item",
+        qty: Number(raw.qty || 1),
+        unit_cost: Number(raw.unit_cost || 0)
+      }]
+    };
+    await api("/api/purchase-orders", { method: "POST", body });
+    showToast("Purchase order saved.");
+    window.location.hash = "#/inventory?tab=po";
+    await viewInventory();
+  });
 }
 
 function renderStock(panel, stockData, itemsData) {
@@ -1030,12 +1241,13 @@ function renderItems(panel, itemsData, stockData) {
         <button class="btn btn-solid" type="submit">Save item</button>
       </form></details>` : ""}
     ${rows.length ? `<div class="table-wrap"><table class="data">
-      <thead><tr><th>Item</th><th>Category</th><th>On hand</th><th>Reorder at</th></tr></thead>
+      <thead><tr><th>Item</th><th>Category</th><th>On hand</th><th>Reorder at</th><th></th></tr></thead>
       <tbody>${rows.map((row) => `<tr>
         <td>${esc(row.name)}${sampleChip(row)}${row.sku ? `<br><span class="muted tiny">${esc(row.sku)}</span>` : ""}</td>
         <td>${esc(row.category || "—")}</td>
         <td>${esc(row.qty_on_hand)} ${esc(row.unit || "")}</td>
         <td>${esc(row.reorder_level ?? "—")}</td>
+        <td class="row-actions">${canEdit ? `<button class="btn btn-ghost" type="button" data-edit-item="${esc(row.id)}">Edit</button>` : ""}</td>
       </tr>`).join("")}</tbody>
     </table></div>` : emptyState("No items yet", "Add chairs, tables, linens and kitchen supplies.")}
   `;
@@ -1047,6 +1259,31 @@ function renderItems(panel, itemsData, stockData) {
     await api("/api/inventory/items", { method: "POST", body });
     window.location.hash = "#/inventory?tab=items";
     await viewInventory();
+  });
+  panel.querySelectorAll("[data-edit-item]").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      const row = rows.find((item) => item.id === btn.dataset.editItem);
+      if (!row) return;
+      const fields = [
+        { name: "name", label: "Name", value: row.name || "", required: true },
+        { name: "category", label: "Category", value: row.category || "" },
+        { name: "unit", label: "Unit", value: row.unit || "pc" },
+        { name: "reorder_level", label: "Reorder level", value: row.reorder_level ?? 0, type: "number" },
+        { name: "sku", label: "SKU", value: row.sku || "" },
+        { name: "notes", label: "Notes", value: row.notes || "", type: "textarea" }
+      ];
+      if (isOwner()) fields.splice(4, 0, { name: "unit_cost", label: "Unit cost", value: row.unit_cost ?? "", type: "number" });
+      const result = await openModal({ title: "Edit item", confirmLabel: "Save", fields });
+      if (!result) return;
+      if (result.unit_cost === "") delete result.unit_cost;
+      try {
+        await api(`/api/inventory/items/${row.id}`, { method: "PATCH", body: result });
+        showToast("Item saved.");
+        await viewInventory();
+      } catch (err) {
+        await openModal({ title: "Could not save", message: err.message, confirmLabel: "OK", cancelLabel: "Close" });
+      }
+    });
   });
 }
 
@@ -1281,15 +1518,15 @@ export async function viewHr() {
     ? [{ id: "leave", label: "My leave" }]
     : [
         { id: "staff", label: "Staff" },
-        { id: "leave", label: "Leave" },
+        { id: "leave", label: "Leave requests" },
         { id: "payroll", label: "Payroll" },
         { id: "advances", label: "Advances" }
       ];
   const loading = { staff: { staff: [] }, leave: { leave: [] }, payroll: { periods: [] }, advances: { advances: [] } };
   const [staff, leave, payroll, advances] = await Promise.all([
-    role() === "staff" ? Promise.resolve(loading.staff) : api("/api/hr/staff"),
-    api("/api/hr/leave"),
-    (role() === "owner" && (tab === "payroll" || tab === "staff")) ? api("/api/hr/payroll") : Promise.resolve(loading.payroll),
+    (role() !== "staff" && (tab === "staff" || tab === "leave" || tab === "advances")) ? api("/api/hr/staff") : Promise.resolve(loading.staff),
+    tab === "leave" ? api("/api/hr/leave") : Promise.resolve(loading.leave),
+    (role() === "owner" && tab === "payroll") ? api("/api/hr/payroll") : Promise.resolve(loading.payroll),
     (isOwner() && tab === "advances") ? api("/api/hr/advances") : Promise.resolve(loading.advances)
   ]);
   ctx.main.innerHTML = `
@@ -1347,7 +1584,17 @@ function renderLeave(panel, data, staffData) {
     </table></div>` : emptyState("No leave requests", role() === "staff" ? "File a request when you need time off." : "Leave requests will appear here.")}
   `;
   formFrom("[data-add-leave]", async (formData) => {
-    await api("/api/hr/leave", { method: "POST", body: Object.fromEntries(formData) });
+    const body = Object.fromEntries(formData);
+    const result = await api("/api/hr/leave", { method: "POST", body });
+    const created = result.leave || result;
+    showToast("Leave request saved.");
+    const tbody = panel.querySelector("table.data tbody");
+    if (tbody && created) {
+      const tr = document.createElement("tr");
+      const name = (ctx.user && ctx.user.name) || "You";
+      tr.innerHTML = `<td>${esc(created.staff_name || name)}</td><td>${esc(created.kind || body.kind || "")}</td><td>${esc(created.start_date || body.start_date)} – ${esc(created.end_date || body.end_date)}</td><td><span class="chip">${esc(created.status || "pending")}</span></td>${canManage ? "<td></td>" : ""}`;
+      tbody.prepend(tr);
+    }
     window.location.hash = "#/hr?tab=leave";
     await viewHr();
   });
@@ -1584,7 +1831,7 @@ export async function viewSettings() {
     const ok = await confirmAction("Remove all SAMPLE records?", "This cannot be undone. Your owner account and any real records will stay.");
     if (!ok) return;
     try {
-      await api("/api/sample", { method: "DELETE" });
+      await api("/api/sample/remove", { method: "POST", body: { confirm: "REMOVE" } });
       await viewSettings();
     } catch (err) {
       if (errEl) errEl.textContent = err.message || "Could not remove sample data.";

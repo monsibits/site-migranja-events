@@ -160,7 +160,10 @@ export async function downloadReport(table, format) {
   const link = document.createElement("a");
   const href = URL.createObjectURL(blob);
   link.href = href;
-  link.download = `${table}.${format === "xlsx" ? "xls" : "csv"}`;
+  const header = response.headers.get("Content-Disposition") || "";
+  const named = /filename\*?=(?:UTF-8''|")?([^";]+)/i.exec(header);
+  const ext = format === "xlsx" ? "xlsx" : "csv";
+  link.download = named ? decodeURIComponent(named[1].trim()) : `${table}.${ext}`;
   document.body.append(link);
   link.click();
   link.remove();
