@@ -47,9 +47,12 @@
           </span>
         </a>
         <div class="portal-user">
-          <div class="portal-user__meta" data-user-meta></div>
-          <button class="btn btn-ghost" type="button" data-logout-all>Sign out everywhere</button>
-          <button class="btn btn-ghost" type="button" data-logout>Log out</button>
+          <button class="btn btn-ghost portal-account-toggle" type="button" data-account-toggle aria-expanded="false" aria-controls="account-menu" aria-haspopup="true">Account</button>
+          <div class="portal-account-menu" id="account-menu" data-account-menu hidden>
+            <div class="portal-user__meta" data-user-meta></div>
+            <button class="btn btn-ghost" type="button" data-logout-all>Sign out everywhere</button>
+            <button class="btn btn-ghost" type="button" data-logout>Log out</button>
+          </div>
         </div>
       </div>
     </header>

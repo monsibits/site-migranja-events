@@ -562,8 +562,28 @@ table.data tr:last-child td { border-bottom: 0; }
 .btn-danger:hover { background: #fbeeee; }
 
 @media (max-width: 719px) {
+  .portal-top__inner {
+    min-height: 3rem;
+    gap: 0.4rem;
+    width: calc(100% - 0.9rem);
+  }
+  .portal-brand img {
+    width: 1.85rem;
+    height: 1.41rem;
+  }
   .portal-top .portal-brand__name,
   .portal-top .portal-brand__tag { display: none; }
+  .portal-nav-toggle {
+    min-width: 2.5rem;
+    min-height: 2.5rem;
+    padding: 0.25rem 0.55rem;
+    font-size: 0.85rem;
+  }
+  .portal-account-toggle {
+    min-height: 2.5rem;
+    padding: 0.25rem 0.7rem;
+    font-size: 0.85rem;
+  }
 }
 
 [hidden] { display: none !important; }
@@ -746,4 +766,155 @@ select, input, textarea { font: inherit; }
   .portal-main { margin: 0; padding: 0; }
   body { background: #fff; }
   .portal-card, .table-wrap { break-inside: avoid; }
+}
+
+
+/* Account menu (header stays compact; actions sit behind one button) */
+.portal-user { position: relative; }
+.portal-account-toggle { margin-left: auto; }
+.portal-account-menu {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 0.35rem);
+  min-width: 16rem;
+  padding: 0.75rem;
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-soft);
+  z-index: 80;
+  display: grid;
+  gap: 0.5rem;
+}
+.portal-account-menu .portal-user__meta {
+  display: block;
+  text-align: left;
+  padding-bottom: 0.4rem;
+  border-bottom: 1px solid var(--color-border);
+}
+.portal-account-menu .btn { width: 100%; justify-content: flex-start; }
+
+/* Desktop events: keep actions on one line and rows even */
+table.data td.row-actions,
+table.data th.actions {
+  white-space: nowrap;
+  vertical-align: middle;
+}
+table.data td { vertical-align: middle; }
+table.data td.row-actions .btn { white-space: nowrap; }
+
+/* Phone: tables become stacked cards */
+@media (max-width: 599px) {
+  .table-wrap {
+    border: 0;
+    background: transparent;
+    overflow: visible;
+  }
+  table.data thead { display: none; }
+  table.data,
+  table.data tbody,
+  table.data tr,
+  table.data td {
+    display: block;
+    width: 100%;
+  }
+  table.data tr {
+    background: var(--color-bg);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow-soft);
+    margin: 0 0 0.75rem;
+    padding: 0.85rem 1rem;
+  }
+  table.data td {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 0.75rem;
+    padding: 0.35rem 0;
+    border-bottom: 0;
+    text-align: right;
+    overflow-wrap: anywhere;
+  }
+  table.data td::before {
+    content: attr(data-label);
+    font-size: 0.75rem;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--color-text-muted);
+    text-align: left;
+    flex: 0 0 6.5rem;
+    overflow-wrap: normal;
+  }
+  table.data td:not([data-label]),
+  table.data td[data-label=""] { display: block; text-align: left; }
+  table.data td:not([data-label])::before,
+  table.data td[data-label=""]::before { content: none; }
+  table.data td.row-actions,
+  table.data td[data-label="Actions"] {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-start;
+    gap: 0.5rem;
+    padding-top: 0.65rem;
+    text-align: left;
+  }
+  table.data td.row-actions::before,
+  table.data td[data-label="Actions"]::before { flex-basis: 100%; }
+  table.data br { display: none; }
+}
+
+/* Public calendar: full width on a phone, room above the sticky visit bar */
+@media (max-width: 719px) {
+  .cal-layout {
+    width: 100%;
+    padding-bottom: calc(var(--sticky-cta-space, 4.75rem) + 1.5rem);
+  }
+  .cal-card,
+  .cal-layout > * {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+  }
+  [data-calendar],
+  .cal__weekdays,
+  .cal__days { width: 100%; }
+  .cal__day {
+    width: 100%;
+    max-height: none;
+    aspect-ratio: auto;
+    min-height: 2.75rem;
+  }
+}
+
+/* In-page dialogs (phone-friendly, no browser prompt) */
+.mg-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(40, 24, 16, 0.45);
+  z-index: 200;
+  display: grid;
+  place-items: end center;
+  padding: 1rem;
+}
+@media (min-width: 600px) {
+  .mg-modal-backdrop { place-items: center; }
+}
+.mg-modal {
+  width: min(100%, 26rem);
+  background: var(--color-bg);
+  border-radius: var(--radius);
+  border: 1px solid var(--color-border);
+  box-shadow: var(--shadow-soft);
+  padding: 1.15rem 1.2rem 1.25rem;
+}
+.mg-modal h2 { margin: 0 0 0.5rem; font-size: 1.15rem; }
+.mg-modal p { margin: 0 0 0.85rem; }
+.mg-modal .field { margin-bottom: 0.75rem; }
+.mg-modal__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  justify-content: flex-end;
 }

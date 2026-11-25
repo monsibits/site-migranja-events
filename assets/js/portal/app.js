@@ -30,6 +30,61 @@ function canAccess(role, route) {
   return (ROUTES[route] || []).includes(role);
 }
 
+function labelTableCells(root = mainEl) {
+  if (!root) return;
+  root.querySelectorAll("table.data").forEach((table) => {
+    const labels = [...table.querySelectorAll("thead th")].map((th) => th.textContent.trim());
+    table.querySelectorAll("tbody tr").forEach((tr) => {
+      [...tr.children].forEach((td, i) => {
+        const label = labels[i] || "";
+        if (td.hasAttribute("data-label")) return;
+        if (!label || label.toLowerCase() === "actions") {
+          td.classList.add("row-actions");
+          td.setAttribute("data-label", label || "Actions");
+          return;
+        }
+        td.setAttribute("data-label", label);
+      });
+    });
+  });
+}
+
+function setAccountMenu(open) {
+  const menu = document.querySelector("[data-account-menu]");
+  const toggle = document.querySelector("[data-account-toggle]");
+  if (!menu || !toggle) return;
+  menu.hidden = !open;
+  toggle.setAttribute("aria-expanded", open ? "true" : "false");
+}
+
+function showSigningOut() {
+  loginScreen.hidden = false;
+  appScreen.hidden = true;
+  document.title = "Signing out… | Mi Granja Events";
+  const panel = loginScreen.querySelector("[data-login-panel]");
+  if (panel) {
+    panel.innerHTML = `
+      <p class="kicker">Account</p>
+      <h1>Signing out…</h1>
+      <p class="muted">Clearing this device.</p>
+    `;
+  }
+}
+
+async function signOut({ everywhere = false } = {}) {
+  const hadToken = Boolean(getToken());
+  currentUser = null;
+  window.location.hash = "";
+  setAccountMenu(false);
+  showSigningOut();
+  if (hadToken) {
+    const path = everywhere ? "/api/auth/logout-all" : "/api/auth/logout";
+    try { await api(path, { method: "POST", body: {} }); } catch { /* local session will still be cleared */ }
+  }
+  clearToken();
+  renderLogin(everywhere ? "You have been signed out everywhere. Please sign in again." : "");
+}
+
 function navItems(role) {
   return [
     { route: "dashboard", label: "Dashboard" },
@@ -496,6 +551,7 @@ async function renderRoute() {
   try {
     await (views[route] || viewDashboard)();
     await attachSampleBanner();
+    labelTableCells();
   } catch (err) {
     if (err.code === "password_change_required") {
       renderChangePassword();
@@ -578,7 +634,10 @@ async function viewDashboard() {
       <section>
         <h2>Upcoming shifts</h2>
         ${shifts.length ? `<ul class="stack-list">${shifts.map((shift) => {
-          const who = currentUser.role === "staff" ? (shift.role || shift.event_title || "") : `${personName(shift)} · ${shift.role || ""}${shift.event_title ? ` · ${shift.event_title}` : ""}`;
+          const eventName = shift.event_title || shift.event_client || "";
+          const who = currentUser.role === "staff"
+            ? [shift.role, eventName].filter(Boolean).join(" · ")
+            : `${personName(shift)} · ${shift.role || ""}${eventName ? ` · ${eventName}` : ""}`;
           return `<li class="portal-card"><strong>${formatDate(shift.date, { month: "short" })}</strong><p class="muted">${escapeHtml(who)} · ${escapeHtml(shift.start)}–${escapeHtml(shift.end)}</p></li>`;
         }).join("")}</ul>` : `<p class="muted">No upcoming shifts yet.</p>`}
       </section>
@@ -955,7 +1014,8 @@ async function viewReports() {
   if (currentUser.role === "owner") tables.push({ id: "finances", label: "Finances (real events only)" });
   mainEl.innerHTML = `
     <div class="page-head"><div><p class="kicker">Exports</p><h1>Reports</h1></div></div>
-    <p class="muted">Download a spreadsheet of current records. Sample rows are left out. For a live Google Sheet later, an Apps Script can pull the same files using a key stored in Script Properties, not in the sheet itself.</p>
+    <p class="muted">Download a spreadsheet of current records. Sample rows are left out.</p>
+    ${currentUser.role === "owner" ? `<p class="muted">For a live Google Sheet later, an Apps Script can pull the same files using a key stored in Script Properties, not in the sheet itself.</p>` : ""}
     <div class="stack-list">
       ${tables.map((item) => `
         <article class="portal-card row-actions">
@@ -1199,22 +1259,26 @@ mainEl.addEventListener("change", async (event) => {
   }
 });
 
-document.querySelector("[data-logout]").addEventListener("click", async () => {
-  try { await api("/api/auth/logout", { method: "POST", body: {} }); } catch { /* ignore */ }
-  clearToken();
-  currentUser = null;
-  window.location.hash = "";
-  renderLogin();
+document.querySelector("[data-account-toggle]")?.addEventListener("click", (event) => {
+  event.stopPropagation();
+  const menu = document.querySelector("[data-account-menu]");
+  setAccountMenu(Boolean(menu && menu.hidden));
+});
+document.addEventListener("click", (event) => {
+  if (!event.target.closest(".portal-user")) setAccountMenu(false);
+});
+document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape") setAccountMenu(false);
 });
 
-document.querySelector("[data-logout-all]")?.addEventListener("click", async () => {
+document.querySelector("[data-logout]").addEventListener("click", () => {
+  signOut({ everywhere: false });
+});
+
+document.querySelector("[data-logout-all]")?.addEventListener("click", () => {
   const ok = window.confirm("Sign out of this account on every device, including this one?");
   if (!ok) return;
-  try { await api("/api/auth/logout-all", { method: "POST", body: {} }); } catch { /* still clear local session */ }
-  clearToken();
-  currentUser = null;
-  window.location.hash = "";
-  renderLogin("You have been signed out everywhere. Please sign in again.");
+  signOut({ everywhere: true });
 });
 
 navToggle.addEventListener("click", () => setNavOpen(navEl.hidden));
