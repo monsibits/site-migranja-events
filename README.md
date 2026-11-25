@@ -33,3 +33,9 @@ Open http://127.0.0.1:8080/
 - The contact form uses Web3Forms (`sales@migranjaevents.com`) and can request an ocular visit, a quote, or a general inquiry, with an optional preferred date. The redirect is `/expo-inquiry-post-submit/`.
 - `/home/` redirects to `/`. `/portfolio-1/` redirects to `/venues/`.
 - Browsers: recent Chrome, Firefox, Safari, and Edge, plus the last two iOS and Android versions. Layout uses Grid, Flexbox, `clamp()`, and `aspect-ratio`.
+
+## Staff portal and booking calendar
+
+- `/book/` is a public availability calendar. It is not in the main menu and is kept out of search results until it is added to the site navigation.
+- `/portal/` is the staff sign-in and portal. It is not linked in the public menu and is blocked in `robots.txt`.
+- Those pages talk to a private API Worker. They are not generated from `_src` except `/book/`, which is built like the other public pages. `/portal/index.html` is edited directly.

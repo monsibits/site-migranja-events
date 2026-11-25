@@ -1,4 +1,8 @@
 User-agent: *
 Allow: /
+Disallow: /portal
+Disallow: /portal/
+Disallow: /book
+Disallow: /book/
 
 Sitemap: https://www.migranjaevents.com/sitemap.xml

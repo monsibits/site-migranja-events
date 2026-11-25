@@ -1,0 +1,41 @@
+---
+title: Check a date | Mi Granja Events and Leisure Inc.
+description: See which dates are available at Mi Granja Events in Indang, Cavite, then send a booking request. The calendar shows only available, booked, or pending dates.
+canonical: /book/
+current: book
+og_image: /assets/img/hero-pavilion.webp
+extra_head: <meta name="robots" content="noindex, nofollow">
+  <link rel="stylesheet" href="/assets/css/portal.css">
+  <script type="module" src="/assets/js/portal/book.js"></script>
+---
+{% include head.html %}
+{% include header.html %}
+<main id="main">
+  <section class="page-hero section-cream">
+    <div class="wrap">
+      <p class="eyebrow">Availability</p>
+      <h1>Find an open date</h1>
+      <hr class="rule">
+      <p class="lead">The calendar shows only whether a date is available, booked, or pending. It never lists client names, packages, or prices. Choose an available day to send a booking request.</p>
+    </div>
+  </section>
+  <section class="section section-white">
+    <div class="wrap cal-layout">
+      <div class="cal-card">
+        <div class="cal-toolbar">
+          <button class="btn btn-ghost cal-nav-btn" type="button" data-month-shift="-1" aria-label="Previous month"><span aria-hidden="true">‹</span></button>
+          <h2 id="cal-title" data-month-title>Month</h2>
+          <button class="btn btn-ghost cal-nav-btn" type="button" data-month-shift="1" aria-label="Next month"><span aria-hidden="true">›</span></button>
+        </div>
+        <div data-calendar></div>
+        <ul class="legend">
+          <li><i class="swatch-available"></i> Available</li>
+          <li><i class="swatch-booked"></i> Booked</li>
+          <li><i class="swatch-pending"></i> Pending</li>
+        </ul>
+      </div>
+      <div data-panel></div>
+    </div>
+  </section>
+</main>
+{% include footer.html %}

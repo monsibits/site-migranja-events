@@ -22,6 +22,7 @@ PAGES = {
     "blog": ROOT / "blog" / "index.html",
     "blog-checklist": ROOT / "blog" / "wedding-planning-checklist" / "index.html",
     "blog-venue": ROOT / "blog" / "how-to-choose-your-wedding-venue" / "index.html",
+    "book": ROOT / "book" / "index.html",
     "thanks": ROOT / "expo-inquiry-post-submit" / "index.html",
     "not-found": ROOT / "404.html",
     "redirect-home": ROOT / "home" / "index.html",
