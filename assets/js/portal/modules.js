@@ -36,7 +36,11 @@ export function isSample(row) {
 }
 
 export function sampleChip(row) {
-  return isSample(row) ? ' <span class="sample-chip">SAMPLE</span>' : "";
+  if (!isSample(row)) return "";
+  const labeled = [row.name, row.client, row.client_name, row.staff_name, row.title, row.number]
+    .filter(Boolean).join(" ").toUpperCase();
+  if (labeled.includes("SAMPLE")) return "";
+  return ' <span class="sample-chip">SAMPLE</span>';
 }
 
 function money(value) {
@@ -80,7 +84,11 @@ function showError(box, message) {
   box.textContent = message;
 }
 
-function showToast(message) {
+function setBusy(on) {
+  if (ctx.main) ctx.main.classList.toggle("is-loading", Boolean(on));
+}
+
+export function showToast(message) {
   let el = document.querySelector(".mg-toast");
   if (!el) {
     el = document.createElement("div");
@@ -97,20 +105,43 @@ function showToast(message) {
   }, 2800);
 }
 
+function titleCase(value) {
+  return String(value || "")
+    .replace(/[_-]+/g, " ")
+    .toLowerCase()
+    .replace(/\b\w/g, (ch) => ch.toUpperCase());
+}
+
 function friendlyStatus(value) {
   const key = String(value || "").toLowerCase().replace(/\s+/g, "_");
   const labels = {
     pending: "Pending",
     in_progress: "In progress",
     done: "Done",
-    completed: "Done",
+    completed: "Completed",
+    inspected: "Inspected",
     failed: "Needs another pass",
     cancelled: "Cancelled",
     canceled: "Cancelled",
     open: "Open",
-    closed: "Closed"
+    closed: "Closed",
+    pre: "Pre-event",
+    post: "Post-event",
+    daily: "Daily",
+    deep: "Deep clean",
+    draft: "Draft",
+    ordered: "Ordered",
+    received: "Received",
+    approved: "Approved",
+    declined: "Declined",
+    paid: "Paid",
+    resolved: "Resolved",
+    confirmed: "Confirmed",
+    tentative: "Tentative",
+    setup: "Setup",
+    booked: "Booked"
   };
-  return labels[key] || (value ? String(value).replace(/_/g, " ") : "—");
+  return labels[key] || (value ? titleCase(value) : "—");
 }
 
 export function openModal({ title, message, confirmLabel = "OK", cancelLabel = "Cancel", danger = false, input = null, fields = null }) {
@@ -118,11 +149,13 @@ export function openModal({ title, message, confirmLabel = "OK", cancelLabel = "
   return new Promise((resolve) => {
     const backdrop = document.createElement("div");
     backdrop.className = "mg-modal-backdrop";
-    const fieldsHtml = (fieldList || []).map((field, index) => `
-        <div class="field">
-          <label for="mg-modal-input-${index}">${esc(field.label || "")}</label>
-          <input id="mg-modal-input-${index}" name="${esc(field.name || "value")}" type="${esc(field.type || "text")}" value="${esc(field.value || "")}" ${field.required ? "required" : ""} placeholder="${esc(field.placeholder || "")}">
-        </div>`).join("");
+    const fieldsHtml = (fieldList || []).map((field, index) => {
+      const id = `mg-modal-input-${index}`;
+      const control = field.type === "textarea"
+        ? `<textarea id="${id}" name="${esc(field.name || "value")}" rows="${esc(field.rows || 3)}" ${field.required ? "required" : ""} placeholder="${esc(field.placeholder || "")}">${esc(field.value || "")}</textarea>`
+        : `<input id="${id}" name="${esc(field.name || "value")}" type="${esc(field.type || "text")}" value="${esc(field.value || "")}" ${field.required ? "required" : ""} placeholder="${esc(field.placeholder || "")}">`;
+      return `<div class="field"><label for="${id}">${esc(field.label || "")}</label>${control}</div>`;
+    }).join("");
     backdrop.innerHTML = `
       <div class="mg-modal" role="dialog" aria-modal="true" aria-labelledby="mg-modal-title">
         <h2 id="mg-modal-title">${esc(title)}</h2>
@@ -233,7 +266,10 @@ export function svgChart(rows, series) {
   }).join("")).join("");
   const labels = rows.map((row, i) => {
     const x = pad.l + i * barW + barW / 2;
-    const text = String(row.label || row.month || "").replace(/^\d{4}-/, "");
+    const raw = String(row.label || row.month || "");
+    const text = /^\d{4}-\d{2}$/.test(raw)
+      ? raw.replace(/^(\d{4})-(\d{2})$/, (_, y, m) => `${["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"][Number(m)-1] || m} ${y}`)
+      : raw;
     return `<text x="${x.toFixed(1)}" y="${height - 10}" text-anchor="middle" font-size="10" fill="#6b5a4e">${esc(text)}</text>`;
   }).join("");
   const ticks = [0, 0.5, 1].map((t) => {
@@ -256,10 +292,22 @@ function formFrom(selector, map) {
     event.preventDefault();
     const data = new FormData(form);
     const errorBox = form.querySelector("[data-form-error]");
+    const button = form.querySelector('button[type="submit"]');
+    if (button) {
+      button.disabled = true;
+      button.classList.add("is-busy");
+    }
+    setBusy(true);
     try {
       await map(data, form);
     } catch (err) {
       showError(errorBox, err.message);
+    } finally {
+      if (button) {
+        button.disabled = false;
+        button.classList.remove("is-busy");
+      }
+      setBusy(false);
     }
   });
   return form;
@@ -282,7 +330,7 @@ function venueOptions(value) {
 }
 
 function staffOptions(value, includeBlank = true) {
-  const people = ctx.users || [];
+  const people = (ctx.users || []).filter((person) => person.role !== "owner");
   return `${includeBlank ? `<option value="">Unassigned</option>` : ""}${optionList(people, value, (p) => p.name)}`;
 }
 
@@ -313,8 +361,9 @@ export async function viewOpsDashboard({ clockHtml = "" } = {}) {
   const shifts = (shiftsData.shifts || []).filter((shift) => shift.date >= today).slice(0, 5);
   const tasks = (tasksData.tasks || []).filter((task) => task.status === "open").slice(0, 5);
 
+  const demoOn = !!(dash && dash.demoMode);
   const ownerCards = isOwner() ? `
-    <article class="portal-card"><p class="kicker">Revenue this month</p><p class="stat">${money(kpis.revenueMonth)}</p>${dash && dash.hasSample ? `<p class="tiny muted">Sample: ${money(sampleKpis.revenueMonth)}</p>` : ""}</article>
+    <article class="portal-card"><p class="kicker">Revenue this month</p><p class="stat">${money(kpis.revenueMonth)}</p>${!demoOn && dash && dash.hasSample ? `<p class="tiny muted">Sample: ${money(sampleKpis.revenueMonth)}</p>` : ""}</article>
     <article class="portal-card"><p class="kicker">Unpaid balances</p><p class="stat">${money(kpis.unpaidBalance)}</p><p class="tiny muted">${kpis.unpaidCount || 0} open ${kpis.unpaidCount === 1 ? "event" : "events"}</p></article>
   ` : "";
 
@@ -336,7 +385,7 @@ export async function viewOpsDashboard({ clockHtml = "" } = {}) {
 
   // Dashboard API may use realRev/sampleRev — map common keys
   const chartRows = chart.map((row) => ({
-    label: row.month || row.label,
+    label: row.label || row.month,
     revenue: row.revenue ?? row.realRev ?? row.collected ?? 0,
     expenses: row.expenses ?? row.realExp ?? 0
   }));
@@ -904,7 +953,7 @@ export async function viewEventSheet(eventId) {
     </div>
     <section>
       <h2>Housekeeping jobs</h2>
-      ${jobs.length ? `<ul class="stack-list">${jobs.map((job) => `<li class="portal-card"><strong>${esc(job.title)}</strong><p class="muted">${esc(job.kind || "")} · ${esc(job.status || "")} · ${esc(job.assigned_name || "Unassigned")}</p></li>`).join("")}</ul>` : `<p class="muted">No cleaning jobs yet. Create them in <a href="#/housekeeping">Housekeeping</a>.</p>`}
+      ${jobs.length ? `<ul class="stack-list">${jobs.map((job) => `<li class="portal-card"><strong>${esc(job.title)}</strong><p class="muted">${esc(friendlyStatus(job.kind))} · ${esc(friendlyStatus(job.status))} · ${esc(job.assigned_name || "Unassigned")}</p></li>`).join("")}</ul>` : `<p class="muted">No cleaning jobs yet. Create them in <a href="#/housekeeping">Housekeeping</a>.</p>`}
     </section>
   `;
   formFrom("[data-save-sheet]", async (formData) => {
@@ -967,7 +1016,7 @@ function renderHkJobs(panel, jobsData, areasData, templatesData) {
       <article class="portal-card hk-job">
         <div class="hk-job__head">
           <div>
-            <p class="kicker">${esc(job.kind || "")} · ${esc(friendlyStatus(job.status))}${sampleChip(job)}</p>
+            <p class="kicker">${esc(friendlyStatus(job.kind))} · ${esc(friendlyStatus(job.status))}${sampleChip(job)}</p>
             <h2>${esc(job.title)}</h2>
             <p class="muted tiny">${esc([job.event_client || job.event_title, job.event_date, job.area_name, job.assigned_name, job.due ? `Due ${job.due}` : ""].filter(Boolean).join(" · ") || "")}</p>
           </div>
@@ -1080,11 +1129,11 @@ function renderTickets(panel, ticketsData, areasData) {
         <button class="btn btn-solid" type="submit">Save ticket</button>
       </form></details>
     ${rows.length ? rows.map((row) => `<article class="portal-card">
-      <p class="kicker">${esc(row.priority || "")} · ${esc(row.status || "")}${sampleChip(row)}</p>
+      <p class="kicker">${esc(titleCase(row.priority || ""))} · ${esc(friendlyStatus(row.status))}${sampleChip(row)}</p>
       <h2>${esc(row.title)}</h2>
       <p>${esc(row.detail || "")}</p>
       <p class="muted tiny">${esc([row.area_name, row.reporter_name, row.assigned_name].filter(Boolean).join(" · "))}</p>
-      ${role() !== "staff" || row.assigned_to === ctx.user?.id || row.reported_by === ctx.user?.id ? `<select data-ticket-status data-id="${esc(row.id)}">${statuses.map((s) => `<option ${row.status === s ? "selected" : ""}>${s}</option>`).join("")}</select>` : ""}
+      ${role() !== "staff" || row.assigned_to === ctx.user?.id || row.reported_by === ctx.user?.id ? `<select data-ticket-status data-id="${esc(row.id)}">${statuses.map((s) => `<option value="${esc(s)}" ${row.status === s ? "selected" : ""}>${esc(friendlyStatus(s))}</option>`).join("")}</select>` : ""}
     </article>`).join("") : emptyState("No tickets yet", "Maintenance issues and repairs are logged here.")}
   `;
   eventOptions("").then((html) => { const el = panel.querySelector("#tk-event"); if (el) el.innerHTML = html; });
@@ -1153,15 +1202,21 @@ function renderPOs(panel, ordersData, suppliersData, itemsData) {
         <button class="btn btn-solid" type="submit">Save purchase order</button>
       </form></details>
     ${orders.length ? `<div class="table-wrap"><table class="data">
-      <thead><tr><th>Number</th><th>Supplier</th><th>Status</th><th>Total</th><th>Expected</th></tr></thead>
+      <thead><tr><th>Number</th><th>Supplier</th><th>Status</th><th>Total</th><th>Expected</th>${isOwner() ? "<th>Actions</th>" : ""}</tr></thead>
       <tbody>${orders.map((row) => `<tr>
         <td>${esc(row.number || "")}${sampleChip(row)}</td>
         <td>${esc(row.supplier_name || "—")}</td>
         <td>${esc(friendlyStatus(row.status))}</td>
         <td>${money(row.total)}</td>
         <td>${esc(row.expected_at || "—")}</td>
+        ${isOwner() ? `<td class="row-actions"><div class="action-group">
+          <button class="btn btn-ghost" type="button" data-view-po="${esc(row.id)}">View</button>
+          ${row.status !== "received" && row.status !== "cancelled" ? `<button class="btn btn-ghost" type="button" data-edit-po="${esc(row.id)}">Edit</button>` : ""}
+          ${row.status !== "received" && row.status !== "cancelled" ? `<button class="btn btn-solid" type="button" data-receive-po="${esc(row.id)}">Receive</button>` : ""}
+        </div></td>` : ""}
       </tr>`).join("")}</tbody>
     </table></div>` : emptyState("No purchase orders yet", "Create a PO to order linens, supplies or equipment.")}
+    <div data-po-detail></div>
   `;
   formFrom("[data-add-po]", async (formData) => {
     const raw = Object.fromEntries(formData);
@@ -1181,6 +1236,59 @@ function renderPOs(panel, ordersData, suppliersData, itemsData) {
     showToast("Purchase order saved.");
     window.location.hash = "#/inventory?tab=po";
     await viewInventory();
+  });
+  const detail = panel.querySelector("[data-po-detail]");
+  const showPo = (row, editing) => {
+    if (!detail || !row) return;
+    const lines = (row.lines || []).map((line) => `<li>${esc(line.label || "Item")} · ${esc(line.qty)} × ${money(line.unit_cost)}</li>`).join("");
+    detail.innerHTML = editing ? `
+      <form class="portal-form portal-card" data-edit-po-form>
+        <h2>Edit ${esc(row.number || "purchase order")}</h2>
+        <div class="field"><label for="po-edit-status">Status</label>
+          <select id="po-edit-status" name="status">${["draft","ordered","cancelled"].map((s) => `<option value="${s}" ${row.status === s ? "selected" : ""}>${friendlyStatus(s)}</option>`).join("")}</select>
+        </div>
+        <div class="field"><label for="po-edit-notes">Notes</label><textarea id="po-edit-notes" name="notes" rows="3">${esc(row.notes || "")}</textarea></div>
+        <div data-form-error></div>
+        <button class="btn btn-solid" type="submit">Save changes</button>
+      </form>` : `
+      <article class="portal-card">
+        <p class="kicker">${esc(friendlyStatus(row.status))}</p>
+        <h2>${esc(row.number || "Purchase order")}${sampleChip(row)}</h2>
+        <p>${esc(row.supplier_name || "No supplier")} · Total ${money(row.total)} · Expected ${esc(row.expected_at || "—")}</p>
+        ${lines ? `<ul>${lines}</ul>` : "<p class=\"muted\">No lines.</p>"}
+        ${row.notes ? `<p>${esc(row.notes)}</p>` : ""}
+      </article>`;
+    if (editing) {
+      formFrom("[data-edit-po-form]", async (formData) => {
+        const body = Object.fromEntries(formData);
+        await api(`/api/purchase-orders/${row.id}`, { method: "PATCH", body });
+        showToast("Purchase order updated.");
+        await viewInventory();
+      });
+    }
+  };
+  panel.querySelectorAll("[data-view-po]").forEach((btn) => {
+    btn.addEventListener("click", () => showPo(orders.find((row) => row.id === btn.dataset.viewPo), false));
+  });
+  panel.querySelectorAll("[data-edit-po]").forEach((btn) => {
+    btn.addEventListener("click", () => showPo(orders.find((row) => row.id === btn.dataset.editPo), true));
+  });
+  panel.querySelectorAll("[data-receive-po]").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      const ok = await openModal({ title: "Receive this purchase order?", message: "Stock will be added once. This cannot be undone.", confirmLabel: "Receive", cancelLabel: "Cancel" });
+      if (!ok) return;
+      btn.disabled = true;
+      btn.classList.add("is-busy");
+      try {
+        await api(`/api/purchase-orders/${btn.dataset.receivePo}`, { method: "PATCH", body: { status: "received" } });
+        showToast("Purchase order received.");
+        await viewInventory();
+      } catch (err) {
+        await openModal({ title: "Could not receive", message: err.message, confirmLabel: "OK", cancelLabel: "Close" });
+        btn.disabled = false;
+        btn.classList.remove("is-busy");
+      }
+    });
   });
 }
 
@@ -1469,7 +1577,8 @@ function renderPnl(panel, data, range) {
       <thead><tr><th>Category</th><th>Amount</th></tr></thead>
       <tbody>${data.byCategory.map((row) => `<tr><td>${esc(row.category)}</td><td>${money(row.amount)}</td></tr>`).join("")}</tbody>
     </table></div>` : emptyState("No P&L figures", "Income and expenses in this period will appear here.")}
-    ${data.sample ? `<p class="muted tiny">Sample income ${money(data.sample.income)} · sample expenses ${money(data.sample.expenses)}</p>` : ""}
+    ${!data.demoMode && data.sample ? `<p class="muted tiny">Sample income ${money(data.sample.income)} · sample expenses ${money(data.sample.expenses)}. These are not in the figures above.</p>` : ""}
+    ${data.demoMode ? `<p class="muted tiny">Demo mode is on, so SAMPLE income and expenses are included. They stay marked SAMPLE in lists and exports.</p>` : ""}
   `;
 }
 
@@ -1759,6 +1868,18 @@ export async function viewOpsReports() {
       ${isOwn ? `<article class="portal-card"><p class="kicker">Collected</p><p class="stat">${money(kpis.collected ?? kpis.revenue ?? kpis.income)}</p></article>
       <article class="portal-card"><p class="kicker">Expenses</p><p class="stat">${money(kpis.expenses)}</p></article>` : ""}
     </div>
+    ${(summary.eventList || []).length ? `<div class="table-wrap">
+      <table class="data">
+        <thead><tr><th>Date</th><th>Event</th><th>Venue</th><th>Status</th></tr></thead>
+        <tbody>${(summary.eventList || []).slice(0, 40).map((event) => `<tr>
+          <td>${esc(event.date || "")}</td>
+          <td>${esc(event.client || event.title || "")}${sampleChip(event)}</td>
+          <td>${esc(event.venue || "—")}</td>
+          <td><span class="chip">${esc(friendlyStatus(event.status))}</span></td>
+        </tr>`).join("")}</tbody>
+      </table>
+    </div>` : `<p class="muted">No events in this period.</p>`}
+    ${summary.demoMode ? `<p class="muted tiny">Demo mode is on, so SAMPLE rows are included and marked SAMPLE. Downloads include a Sample column.</p>` : ""}
     <div class="page-head"><h2>Downloads</h2></div>
     <div class="card-grid cols-2">
       ${tables.map((item) => `

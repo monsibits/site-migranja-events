@@ -320,7 +320,7 @@
   cursor: pointer;
 }
 
-@media (min-width: 960px) {
+@media (min-width: 720px) {
   .portal-nav-toggle { display: none; }
 }
 
@@ -382,7 +382,7 @@
   min-width: 0;
 }
 
-@media (min-width: 960px) {
+@media (min-width: 720px) {
   .portal-shell {
     grid-template-columns: 15.5rem minmax(0, 1fr);
     align-items: start;
@@ -481,6 +481,39 @@
 }
 
 .sample-banner p { margin: 0.25rem 0 0; }
+
+.demo-mode-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem 1rem;
+  width: min(100%, var(--wrap));
+  margin: 0 auto;
+  padding: 0.65rem 1rem;
+  background: #f4efe6;
+  border-bottom: 1px solid var(--color-border);
+  font-size: 0.92rem;
+}
+.demo-mode-bar[hidden] { display: none; }
+.demo-mode-bar.is-on { background: #efe6d4; }
+.demo-mode-bar p { margin: 0; }
+.demo-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.btn.is-busy,
+.btn:disabled {
+  opacity: 0.7;
+  cursor: progress;
+}
+.portal-main.is-loading {
+  opacity: 0.72;
+  pointer-events: none;
+}
 
 .table-wrap {
   overflow-x: auto;
@@ -794,22 +827,35 @@ select, input, textarea { font: inherit; }
 }
 .portal-account-menu .btn { width: 100%; justify-content: flex-start; }
 
-/* Desktop events: keep actions on one line and rows even */
+/* Keep action buttons inside the row, including at 110–175% zoom */
+.table-wrap {
+  max-width: 100%;
+  min-width: 0;
+}
+table.data {
+  width: 100%;
+  table-layout: auto;
+}
+table.data th,
+table.data td {
+  min-width: 0;
+  vertical-align: middle;
+}
 table.data td.row-actions,
 table.data th.actions {
-  white-space: nowrap;
-  vertical-align: middle;
-  width: 1%;
+  white-space: normal;
+  width: auto;
+  max-width: 14rem;
 }
-table.data td { vertical-align: middle; }
 table.data td.row-actions .btn { white-space: nowrap; }
 table.data td.row-actions .action-group {
   display: flex;
-  flex-wrap: nowrap;
+  flex-wrap: wrap;
   gap: 0.35rem;
   align-items: center;
   justify-content: flex-end;
   min-height: 2.25rem;
+  min-width: 0;
 }
 @media (min-width: 720px) {
   .table-wrap { overflow-x: auto; }
@@ -871,6 +917,13 @@ table.data td.row-actions .action-group {
     gap: 0.5rem;
     padding-top: 0.65rem;
     text-align: left;
+    max-width: none;
+    width: 100%;
+  }
+  table.data td.row-actions .action-group {
+    flex-wrap: wrap;
+    justify-content: flex-start;
+    width: 100%;
   }
   table.data td.row-actions::before,
   table.data td[data-label="Actions"]::before { flex-basis: 100%; }

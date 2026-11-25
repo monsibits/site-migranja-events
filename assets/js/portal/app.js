@@ -3,6 +3,7 @@ import {
   confirmAction,
   openModal,
   setModuleContext,
+  showToast,
   viewAccounting,
   viewEventSheet,
   viewHousekeeping,
@@ -197,7 +198,7 @@ function go(route) {
 }
 
 function isWide() {
-  return window.matchMedia("(min-width: 960px)").matches;
+  return window.matchMedia("(min-width: 720px)").matches;
 }
 
 function setNavOpen(open) {
@@ -240,6 +241,10 @@ async function loadUsers() {
   }
 }
 
+function staffChoices() {
+  return (usersCache || []).filter((item) => String(item.role || "").toLowerCase() !== "owner");
+}
+
 function userName(id) {
   const found = usersCache.find((item) => item.id === id);
   return found ? found.name : "";
@@ -269,25 +274,36 @@ function sampleMark(row, visible = "") {
   return ' <span class="chip chip-sample">SAMPLE</span>';
 }
 
-async function attachSampleBanner() {
-  if (!currentUser || currentUser.role !== "owner") return;
-  try {
-    const data = await api("/api/sample");
-    if (!data.hasSample) return;
-  } catch {
+async function refreshDemoBar() {
+  const bar = document.querySelector("[data-demo-bar]");
+  if (!bar) return;
+  if (!currentUser) {
+    bar.hidden = true;
+    bar.innerHTML = "";
     return;
   }
-  if (mainEl.querySelector("[data-sample-banner]")) return;
-  const banner = document.createElement("aside");
-  banner.className = "portal-card sample-banner";
-  banner.setAttribute("data-sample-banner", "");
-  banner.innerHTML = `
-    <div>
-      <p class="kicker">Sample records</p>
-      <p>This portal has SAMPLE records so you can see how each screen looks. They are marked SAMPLE and do not show on the public booking calendar. You can remove them in <a href="#/settings">Settings</a>.</p>
-    </div>
-  `;
-  mainEl.prepend(banner);
+  try {
+    const data = await api("/api/settings");
+    if (!data.hasSample) {
+      bar.hidden = true;
+      bar.innerHTML = "";
+      return;
+    }
+    const on = Boolean(data.demo_mode);
+    bar.hidden = false;
+    bar.classList.toggle("is-on", on);
+    const copy = on
+      ? "Figures include SAMPLE records. Lists and downloads mark those rows SAMPLE."
+      : "Figures show real records only. SAMPLE rows stay in lists with a separate note.";
+    if (currentUser.role === "owner") {
+      bar.innerHTML = `<p><strong>Demo mode</strong> is ${on ? "on" : "off"}. ${copy}</p>
+        <label class="demo-toggle"><input type="checkbox" data-demo-toggle ${on ? "checked" : ""}> Include sample figures</label>`;
+    } else {
+      bar.innerHTML = `<p><strong>Demo mode</strong> is ${on ? "on" : "off"}. ${copy}</p>`;
+    }
+  } catch {
+    bar.hidden = true;
+  }
 }
 
 
@@ -567,6 +583,7 @@ async function renderRoute() {
   setPageTitle(route);
   if (route === "setup") return;
   if (!currentUser) {
+    await refreshDemoBar();
     renderLogin();
     return;
   }
@@ -611,6 +628,7 @@ async function renderRoute() {
   try {
     await (views[route] || viewDashboard)();
     labelTableCells();
+    await refreshDemoBar();
   } catch (err) {
     mainEl.innerHTML = `<div class="portal-card"><h1>Could not load this page</h1><p class="muted">${escapeHtml(err.message || "Please try again.")}</p><p><button class="btn btn-solid" type="button" data-retry>Try again</button></p></div>`;
     mainEl.querySelector("[data-retry]")?.addEventListener("click", () => renderRoute());
@@ -665,7 +683,7 @@ async function viewEvents() {
       <td>${esc(event.venue || "—")}</td>
       <td><span class="chip chip-${esc(String(event.status || "").toLowerCase())}">${esc(event.status || "")}</span></td>
       <td class="row-actions"><div class="action-group">
-        <button class="btn btn-ghost" type="button" data-action="edit-event" data-id="${esc(event.id)}">View / Edit</button>
+        <button class="btn btn-ghost" type="button" data-action="edit-event" data-id="${esc(event.id)}">View</button>
         ${currentUser.role === "owner" ? `<a class="btn btn-ghost" href="#/events?sheet=${esc(event.id)}">Event sheet</a>` : ""}
         ${event.status !== "Cancelled" && event.status !== "Completed" ? `<button class="btn btn-danger" type="button" data-action="cancel-event" data-id="${esc(event.id)}">Cancel</button>` : ""}
       </div></td>
@@ -831,7 +849,7 @@ async function viewSchedule() {
       <form class="portal-form stack-gap" data-add-shift>
         <div class="field"><label for="sh-date">Date <span class="req">required</span></label><input id="sh-date" name="date" type="date" required></div>
         <div class="field"><label for="sh-staff">Staff <span class="req">required</span></label>
-          <select id="sh-staff" name="staffId" required>${usersCache.map((item) => `<option value="${esc(item.id)}">${esc(item.name)}</option>`).join("")}</select>
+          <select id="sh-staff" name="staffId" required>${staffChoices().map((item) => `<option value="${esc(item.id)}">${esc(item.name)}</option>`).join("")}</select>
         </div>
         <div class="field"><label for="sh-start">Start</label><input id="sh-start" name="start" type="time" required></div>
         <div class="field"><label for="sh-end">End</label><input id="sh-end" name="end" type="time" required></div>
@@ -891,7 +909,7 @@ async function viewTasks() {
       <form class="portal-form stack-gap" data-add-task>
         <div class="field"><label for="tk-title">Task <span class="req">required</span></label><input id="tk-title" name="title" required></div>
         <div class="field"><label for="tk-staff">Staff <span class="req">required</span></label>
-          <select id="tk-staff" name="staffId" required>${usersCache.map((item) => `<option value="${esc(item.id)}">${esc(item.name)}</option>`).join("")}</select>
+          <select id="tk-staff" name="staffId" required>${staffChoices().map((item) => `<option value="${esc(item.id)}">${esc(item.name)}</option>`).join("")}</select>
         </div>
         <div class="field"><label for="tk-due">Due</label><input id="tk-due" name="due" type="date"></div>
         <div class="field"><label for="tk-event">Event</label>
@@ -955,7 +973,7 @@ async function viewAttendance() {
       <label for="att-staff">Staff</label>
       <select id="att-staff" name="staff">
         <option value="">Everyone</option>
-        ${usersCache.map((item) => `<option value="${esc(item.id)}" ${staff === item.id ? "selected" : ""}>${esc(item.name)}</option>`).join("")}
+        ${staffChoices().map((item) => `<option value="${esc(item.id)}" ${staff === item.id ? "selected" : ""}>${esc(item.name)}</option>`).join("")}
       </select>
     </div>`;
   mainEl.innerHTML = `
@@ -1004,13 +1022,13 @@ async function viewFinances() {
   const sampleCollected = sampleTotals.collected ?? sampleTotals.deposits;
   mainEl.innerHTML = `
     <div class="page-head"><div><p class="kicker">Owner only</p><h1>Event revenue and balances</h1></div></div>
-    <p class="muted">Balance is the contract total minus payments received. Totals below are for real events only. Sample events are listed and totaled separately.</p>
+    <p class="muted">Balance is the contract total minus payments received.${data.demoMode ? " Demo mode is on, so SAMPLE events are included in the totals and marked SAMPLE in the list." : hasSample ? " Totals below are for real events only. Sample events are totaled separately." : ""}</p>
     <div class="card-grid cols-3">
       <article class="portal-card"><p class="kicker">Contract total</p><p class="stat">${formatMoney(totals.fees)}</p></article>
       <article class="portal-card"><p class="kicker">Collected</p><p class="stat">${formatMoney(collected)}</p></article>
       <article class="portal-card"><p class="kicker">Balance</p><p class="stat">${formatMoney(totals.balance)}</p></article>
     </div>
-    ${hasSample ? `<p class="muted">Sample totals: ${formatMoney(sampleTotals.fees)} contract · ${formatMoney(sampleCollected)} collected · ${formatMoney(sampleTotals.balance)} balance. These are not included in the cards above.</p>` : ""}
+    ${!data.demoMode && hasSample ? `<p class="muted">Sample totals: ${formatMoney(sampleTotals.fees)} contract · ${formatMoney(sampleCollected)} collected · ${formatMoney(sampleTotals.balance)} balance. These are not included in the cards above.</p>` : ""}
     <div class="table-wrap stack-gap">
       <table class="data">
         <thead><tr><th>Date</th><th>Event</th><th>Contract</th><th>Collected</th><th>Balance</th></tr></thead>
@@ -1186,14 +1204,28 @@ mainEl.addEventListener("click", async (event) => {
   const button = event.target.closest("[data-action]");
   if (!button) return;
   const action = button.dataset.action;
+  const markBusy = () => {
+    button.disabled = true;
+    button.classList.add("is-busy");
+    mainEl.classList.add("is-loading");
+  };
   try {
     if (action === "remove-sample") {
       window.location.hash = "#/settings";
       return;
     }
+    const mutating = new Set(["clock","approve","decline","save-event","delete-event","set-status","complete-task","save-request","add-announcement","save-user","toggle-user","export-events","export-attendance","correct-attendance"]);
+    if (mutating.has(action) && action !== "clock" && action !== "approve" && action !== "decline" && action !== "correct-attendance" && action !== "logout-all") {
+      markBusy();
+    }
     if (action === "clock") {
+      const clockingIn = button.textContent.trim() === "Time in";
+      button.disabled = true;
+      button.classList.add("is-busy");
       await api("/api/attendance/clock", { method: "POST", body: {} });
+      showToast(clockingIn ? "Timed in." : "Timed out.");
       await renderRoute();
+      return;
     }
     if (action === "approve" || action === "decline") {
       const body = { decision: action === "approve" ? "approved" : "declined" };
@@ -1215,6 +1247,7 @@ mainEl.addEventListener("click", async (event) => {
         );
         if (!ok) return;
       }
+      markBusy();
       await api(`/api/requests/${button.dataset.id}/decide`, { method: "POST", body });
       await refreshPending();
       await renderRoute();
@@ -1290,6 +1323,9 @@ mainEl.addEventListener("click", async (event) => {
       return;
     }
   } catch (err) {
+    button.disabled = false;
+    button.classList.remove("is-busy");
+    mainEl.classList.remove("is-loading");
     await openModal({ title: "Something went wrong", message: err.message, confirmLabel: "OK", cancelLabel: "Close" });
   }
 });
@@ -1303,6 +1339,20 @@ mainEl.addEventListener("change", async (event) => {
   } catch (err) {
     await openModal({ title: "Could not update the role", message: err.message, confirmLabel: "OK", cancelLabel: "Close" });
     await renderRoute();
+  }
+});
+
+document.addEventListener("change", async (event) => {
+  const toggle = event.target.closest("[data-demo-toggle]");
+  if (!toggle) return;
+  toggle.disabled = true;
+  try {
+    await api("/api/settings", { method: "PATCH", body: { demo_mode: toggle.checked } });
+    await renderRoute();
+  } catch (err) {
+    toggle.checked = !toggle.checked;
+    toggle.disabled = false;
+    await openModal({ title: "Could not update demo mode", message: err.message, confirmLabel: "OK", cancelLabel: "Close" });
   }
 });
 
