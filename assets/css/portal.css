@@ -465,6 +465,23 @@
   color: var(--color-text-muted);
 }
 
+.chip-sample {
+  background: #f4efe4;
+  border-color: #e0d3b8;
+  color: #6a4a1f;
+}
+
+.sample-banner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 1.25rem;
+}
+
+.sample-banner p { margin: 0.25rem 0 0; }
+
 .table-wrap {
   overflow-x: auto;
   border: 1px solid var(--color-border);

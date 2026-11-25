@@ -118,6 +118,38 @@ function userName(id) {
   return found ? found.name : "";
 }
 
+
+function isSample(row) {
+  return Boolean(row && (row.is_sample === 1 || row.is_sample === true || row.isSample));
+}
+
+function sampleMark(row) {
+  return isSample(row) ? ' <span class="chip chip-sample">SAMPLE</span>' : "";
+}
+
+async function attachSampleBanner() {
+  if (!currentUser || currentUser.role !== "owner") return;
+  try {
+    const data = await api("/api/sample");
+    if (!data.hasSample) return;
+  } catch {
+    return;
+  }
+  if (mainEl.querySelector("[data-sample-banner]")) return;
+  const banner = document.createElement("aside");
+  banner.className = "portal-card sample-banner";
+  banner.setAttribute("data-sample-banner", "");
+  banner.innerHTML = `
+    <div>
+      <p class="kicker">Sample records</p>
+      <p>This portal has SAMPLE records so you can see how each screen looks. They are marked SAMPLE and do not show on the public booking calendar. They are not real clients or bookings.</p>
+    </div>
+    <button class="btn btn-danger" type="button" data-action="remove-sample">Remove sample data</button>
+  `;
+  mainEl.prepend(banner);
+}
+
+
 function renderNav() {
   const items = navItems(currentUser.role).map((item) => {
     const current = currentRoute() === item.route ? ' aria-current="page"' : "";
@@ -344,6 +376,7 @@ async function renderRoute() {
   };
   try {
     await (views[route] || viewDashboard)();
+    await attachSampleBanner();
   } catch (err) {
     if (err.status === 401) {
       currentUser = null;
@@ -438,7 +471,7 @@ async function viewEvents() {
   const rows = (data.events || []).map((event) => `
     <tr>
       <td>${formatDate(event.date, { month: "short", weekday: "short" })}</td>
-      <td>${escapeHtml(event.client || "—")}<br><span class="muted">${escapeHtml(event.title || "")}</span></td>
+      <td>${escapeHtml(event.client || "—")}${sampleMark(event)}<br><span class="muted">${escapeHtml(event.title || "")}</span></td>
       <td>${escapeHtml(event.package || "—")}</td>
       <td>${event.pax || "—"}</td>
       <td>${escapeHtml(event.venue || "—")}</td>
@@ -531,7 +564,7 @@ async function viewRequests() {
         <div class="page-head">
           <div>
             <p class="kicker">${formatDate(req.date, { weekday: "long" })}</p>
-            <h2>${escapeHtml(req.name)}</h2>
+            <h2>${escapeHtml(req.name)}${sampleMark(req)}</h2>
           </div>
           <span class="chip chip-${escapeHtml(req.status)}">${escapeHtml(req.status)}</span>
         </div>
@@ -557,7 +590,7 @@ async function viewRequests() {
 async function viewSchedule() {
   const data = await api("/api/shifts");
   const rows = (data.shifts || []).map((shift) => {
-    const who = currentUser.role === "staff" ? "" : `<td>${escapeHtml(userName(shift.staff_id) || "")}</td>`;
+    const who = currentUser.role === "staff" ? "" : `<td>${escapeHtml(userName(shift.staff_id) || "")}${sampleMark(shift)}</td>`;
     return `<tr>
       <td>${formatDate(shift.date, { month: "short", weekday: "short" })}</td>
       ${who}
@@ -585,7 +618,7 @@ async function viewTasks() {
     return `<tr>
       <td>${task.due ? formatDate(task.due, { month: "short" }) : "—"}</td>
       ${who}
-      <td>${escapeHtml(task.title)}</td>
+      <td>${escapeHtml(task.title)}${sampleMark(task)}</td>
       <td><span class="chip chip-${done ? "done" : "open"}">${done ? "Done" : "Open"}</span></td>
       <td><button class="btn btn-ghost" type="button" data-action="toggle-task" data-id="${escapeHtml(task.id)}">${done ? "Reopen" : "Mark done"}</button></td>
     </tr>`;
@@ -610,7 +643,7 @@ async function viewAttendance() {
   const rows = (data.attendance || []).map((row) => `
     <tr>
       <td>${formatDate(row.date, { month: "short", weekday: "short" })}</td>
-      ${currentUser.role === "staff" ? "" : `<td>${escapeHtml(userName(row.staff_id) || "")}</td>`}
+      ${currentUser.role === "staff" ? "" : `<td>${escapeHtml(userName(row.staff_id) || "")}${sampleMark(row)}</td>`}
       <td>${escapeHtml(row.time_in || "—")}</td>
       <td>${escapeHtml(row.time_out || "—")}</td>
     </tr>
@@ -632,7 +665,7 @@ async function viewAnnouncements() {
   const items = (data.announcements || []).map((item) => `
     <article class="portal-card">
       <p class="kicker">${formatDate(item.date, { month: "short" })}</p>
-      <h2>${escapeHtml(item.title)}</h2>
+      <h2>${escapeHtml(item.title)}${sampleMark(item)}</h2>
       <p>${escapeHtml(item.body)}</p>
     </article>
   `).join("") || `<p class="muted">No announcements yet.</p>`;
@@ -669,10 +702,11 @@ async function viewAnnouncements() {
 
 async function viewFinances() {
   const data = await api("/api/finances");
+  const hasSample = (data.events || []).some(isSample);
   const rows = (data.events || []).map((event) => `
     <tr>
       <td>${formatDate(event.date, { month: "short" })}</td>
-      <td>${escapeHtml(event.client || "")} · ${escapeHtml(event.title || "")}</td>
+      <td>${escapeHtml(event.client || "")} · ${escapeHtml(event.title || "")}${sampleMark(event)}</td>
       <td>${formatMoney(event.fee)}</td>
       <td>${formatMoney(event.deposit)}</td>
       <td>${event.fee ? formatMoney((event.fee || 0) - (event.deposit || 0)) : "TBD"}</td>
@@ -681,6 +715,7 @@ async function viewFinances() {
   const totals = data.totals || { fees: 0, deposits: 0, balance: 0 };
   mainEl.innerHTML = `
     <div class="page-head"><div><p class="kicker">Owner only</p><h1>Event revenue and deposits</h1></div></div>
+    ${hasSample ? `<p class="muted">These totals include SAMPLE events so you can see how this page looks. They are not real bookings.</p>` : ""}
     <div class="card-grid cols-3">
       <article class="portal-card"><p class="kicker">Fees</p><p class="stat">${formatMoney(totals.fees)}</p></article>
       <article class="portal-card"><p class="kicker">Deposits</p><p class="stat">${formatMoney(totals.deposits)}</p></article>
@@ -699,7 +734,7 @@ async function viewUsers() {
   await loadUsers();
   const rows = usersCache.map((item) => `
     <tr>
-      <td>${escapeHtml(item.name)}</td>
+      <td>${escapeHtml(item.name)}${sampleMark(item)}</td>
       <td>${escapeHtml(item.email)}</td>
       <td>${escapeHtml(item.title || "")}</td>
       <td>
@@ -765,6 +800,15 @@ mainEl.addEventListener("click", async (event) => {
   if (!button) return;
   const action = button.dataset.action;
   try {
+    if (action === "remove-sample") {
+      const ok = window.confirm("Remove all SAMPLE records? This cannot be undone. Your owner account and any real records will stay.");
+      if (!ok) return;
+      await api("/api/sample/remove", { method: "POST", body: {} });
+      await loadUsers().catch(() => { usersCache = []; });
+      await refreshPending();
+      await renderRoute();
+      return;
+    }
     if (action === "clock") {
       await api("/api/attendance/clock", { method: "POST", body: {} });
       await renderRoute();
